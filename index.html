@@ -649,11 +649,13 @@
   .ab-tabla .ab-sel.plat{font-weight:700;}
   .ab-tabla .ab-sel.plat.web{color:var(--turquesa);}
   .ab-tabla .ab-sel.plat.buho{color:var(--naranjo);}
+  .ab-tabla .ab-sel.plat.wsp{color:#1e8e4f;}
   .ab-tabla .ab-sel.est{appearance:none;-webkit-appearance:none;color:#fff;font-weight:700;padding-right:26px;
     background-repeat:no-repeat;background-position:right 9px center;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='white'/%3E%3C/svg%3E");}
   .ab-tabla .ab-sel.est.pend,.ab-tabla .ab-sel.est.pend:hover,.ab-tabla .ab-sel.est.pend:focus{background-color:var(--naranjo);color:#fff;}
   .ab-tabla .ab-sel.est.res,.ab-tabla .ab-sel.est.res:hover,.ab-tabla .ab-sel.est.res:focus{background-color:var(--turquesa);color:#fff;}
+  .ab-tabla .ab-sel.est.rech,.ab-tabla .ab-sel.est.rech:hover,.ab-tabla .ab-sel.est.rech:focus{background-color:#c0392b;color:#fff;}
   .ab-tabla .ab-sel.est option{color:var(--texto);background:#fff;}
   .ab-x{background:none;border:none;color:var(--texto-suave);cursor:pointer;font-size:14px;padding:7px;border-radius:var(--radio-chico);}
   .ab-x:hover{color:#c0392b;background:#fdefed;}
@@ -1204,7 +1206,7 @@ function tabCount(tab){
   if(tab==='notas') return state.notas.length;
   if(tab==='calendario') return '';
   if(tab==='reporte') return '';
-  if(tab==='abastecimiento') return state.abastecimiento.filter(r=>r.estado!=='Resuelto').length || '';
+  if(tab==='abastecimiento') return state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).length || '';
   return '';
 }
 
@@ -1680,7 +1682,7 @@ function pedidoCardHtml(p){
           <select onchange="setTieneRecetaEstado('${p.id}',this.value)">
             <option value="pendiente" ${p.tieneReceta.estado==='pendiente'?'selected':''}>Sin definir</option>
             <option value="tiene" ${p.tieneReceta.estado==='tiene'?'selected':''}>Tiene la receta</option>
-            <option value="no_tiene" ${p.tieneReceta.estado==='no_tiene'?'selected':''}>No tiene la receta</option>
+            ${p.tieneReceta.estado==='no_tiene' ? '<option value="no_tiene" selected>No tiene la receta</option>' : ''}
             <option value="envio_region">Envío a región</option>
             <option value="receta_digital">Receta digitalizada</option>
           </select>
@@ -3059,7 +3061,7 @@ function escapeJs(str){ return String(str).replace(/'/g,"\\'"); }
 
 function aplicarCambioRemoto(key, value){
   if(key==='abastecimiento:maestro'){ abRecargarMaestro(); return; }
-  if(key.startsWith('abastecimiento:resueltos:')){ abRemotoResueltos(key); return; }
+  if(key.startsWith('abastecimiento:resueltos:') || key.startsWith('abastecimiento:rechazados:')){ abRemotoArchivo(key); return; }
   if(pendingSaves[key]) return; // no pisar un cambio local que todavía no se guardó
   if(value===undefined) return;
   if(key==='shopify:entrantes'){
@@ -3098,16 +3100,16 @@ function setupRealtime(){
    Productos faltantes por pedido, con el SKU completado desde el maestro de Bsale.
    Filas en 'abastecimiento:list' y maestro en 'abastecimiento:maestro' (kv_store, compartidos por todo el equipo).
    Mientras la pestaña está montada se refresca solo la tabla, y nunca mientras alguien escribe en ella. */
-const AB_PLATAFORMAS = ['WEB','BUHO'];
+const AB_PLATAFORMAS = ['WEB','BUHO','WHATSAPP'];
 const AB_ENVIOS      = ['Despacho','Blue','Pick Up','Whatsapp'];
 const AB_PROVEEDORES = ['Mediven','Provefarma','Global','Ñuñoa','Gava','Otro'];
-const AB_ESTADOS     = ['Pendiente','Resuelto'];
+const AB_ESTADOS     = ['Pendiente','Resuelto','Rechazado'];
 const AB_XLSX_URL    = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
 
 let abMontado = false;
-let abSub = 'pendientes';      // subpestaña: 'pendientes' | 'resueltos'
+let abSub = 'pendientes';      // subpestaña: 'pendientes' | 'resueltos' | 'rechazados'
 let abResMes = todayStr().slice(0,7);
-let abResCache = {};           // 'YYYY-MM' -> filas resueltas de ese mes (se bajan solo al verlas)
+let abResCache = {};           // 'resueltos:YYYY-MM' / 'rechazados:YYYY-MM' -> filas de ese mes (se bajan solo al verlas)
 let abMoviendo = false;
 let abSucio = false;            // hay cambios propios esperando guardarse
 let abCambios = {};             // id de fila -> Set de campos editados aquí y aún no guardados
@@ -3123,8 +3125,8 @@ function abNorm(s){ // minúsculas, sin tildes ni signos: "Ñuñoa" -> "nunoa", 
   return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
          .replace(/[^a-z0-9]+/g,' ').replace(/\s+/g,' ').trim();
 }
-function abClsPlat(v){ return v==='WEB' ? 'web' : (v==='BUHO' ? 'buho' : ''); }
-function abClsEst(v){ return v==='Resuelto' ? 'res' : 'pend'; }
+function abClsPlat(v){ return v==='WEB' ? 'web' : (v==='BUHO' ? 'buho' : (v==='WHATSAPP' ? 'wsp' : '')); }
+function abClsEst(v){ return v==='Resuelto' ? 'res' : (v==='Rechazado' ? 'rech' : 'pend'); }
 function abNuevaFila(){
   return { id:uid(), plataforma:'WEB', envio:'', pedido:'', producto:'', sku:'', skuAuto:false,
            cantidad:'', proveedor:'', obs:'', estado:'Pendiente', creadoPor:state.whoami||'—', creadoAt:new Date().toISOString() };
@@ -3358,17 +3360,17 @@ function abFilaHTML(r){
 function abAutoGrow(el){ el.style.height = 'auto'; el.style.height = (el.scrollHeight+2)+'px'; }
 function abActualizarConteo(){
   const el = document.getElementById('ab-conteo');
-  const p = state.abastecimiento.filter(r=>r.estado!=='Resuelto').length;
+  const p = state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).length;
   const badge = document.getElementById('ab-badge-pend');
   if(badge){ badge.textContent = p; badge.style.display = p ? '' : 'none'; }
   if(el) el.innerHTML = '<b>'+p+'</b> pendientes';
-  if(state.abastecimiento.some(r=>r.estado==='Resuelto')) setTimeout(abMoverResueltos, 0);
+  if(state.abastecimiento.some(r=>abArchivoDe(r.estado))) setTimeout(abMoverArchivados, 0);
 }
 function abPintarFilas(){
   const tb = document.getElementById('ab-tbody');
   if(!tb){ abActualizarConteo(); return; }
   abRefrescoPendiente = false;
-  const rows = state.abastecimiento.filter(r=>r.estado!=='Resuelto');
+  const rows = state.abastecimiento.filter(r=>!abArchivoDe(r.estado));
   tb.innerHTML = rows.length
     ? rows.map(abFilaHTML).join('')
     : '<tr><td class="ab-vacio" colspan="10">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
@@ -3405,13 +3407,14 @@ function renderAbastecimientoTab(c){
     <div class="subtabs">
       <button class="subtab-btn ${abSub==='pendientes'?'active':''}" onclick="abSetSub('pendientes')">Pendientes <span class="subtab-badge" id="ab-badge-pend"></span></button>
       <button class="subtab-btn ${abSub==='resueltos'?'active':''}" onclick="abSetSub('resueltos')">Resueltos</button>
+      <button class="subtab-btn ${abSub==='rechazados'?'active':''}" onclick="abSetSub('rechazados')">Rechazados</button>
     </div>
     <div id="ab-body"></div>
   `;
   abMontado = true;
   abPintarMaestro();
   if(!abMaestroCargado) abRecargarMaestro();
-  if(abSub==='resueltos') abRenderResueltos(); else abRenderPendientes();
+  if(AB_ARCHIVOS[abSub]) abRenderArchivo(); else abRenderPendientes();
   abActualizarConteo();
 }
 function abSetSub(sub){
@@ -3475,73 +3478,85 @@ async function abCopiar(btn, texto){
   setTimeout(()=>{ btn.innerHTML = AB_ICONO_COPIAR; btn.classList.remove('ok'); btn.title = 'Copiar SKU'; }, 1200);
 }
 
-/* Resueltos: se guardan por mes en 'abastecimiento:resueltos:YYYY-MM', según el mes en que se agregó la fila */
+/* Resueltos y Rechazados: se guardan por mes en 'abastecimiento:resueltos:YYYY-MM' y
+   'abastecimiento:rechazados:YYYY-MM', según el mes en que se agregó la fila */
+const AB_ARCHIVOS = {
+  resueltos:  { estado:'Resuelto',  at:'resueltoAt',  por:'resueltoPor',  titulo:'Resueltos',  plural:'resueltos',  col:'Resuelto' },
+  rechazados: { estado:'Rechazado', at:'rechazadoAt', por:'rechazadoPor', titulo:'Rechazados', plural:'rechazados', col:'Rechazado' }
+};
+function abArchivoDe(estado){ return estado==='Resuelto' ? 'resueltos' : (estado==='Rechazado' ? 'rechazados' : null); }
 function abMesDe(r){
   const d = r && r.creadoAt ? new Date(r.creadoAt) : new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
 }
-async function abLeerMes(mes){
-  const { data, error } = await sb.from('kv_store').select('value').eq('key','abastecimiento:resueltos:'+mes).maybeSingle();
+async function abLeerMes(tipo, mes){
+  const { data, error } = await sb.from('kv_store').select('value').eq('key','abastecimiento:'+tipo+':'+mes).maybeSingle();
   if(error) throw error;
   return (data && Array.isArray(data.value)) ? data.value : [];
 }
-// Pasa las filas marcadas como Resuelto desde la lista de pendientes a su mes.
-// Se lee la versión más reciente del mes justo antes de escribir, para no pisar lo que otro haya resuelto.
-async function abMoverResueltos(){
+// Pasa las filas marcadas como Resuelto o Rechazado desde la lista de pendientes a su mes.
+// Se lee la versión más reciente del mes justo antes de escribir, para no pisar lo que otro haya archivado.
+async function abMoverArchivados(){
   if(abMoviendo) return;
-  const listas = state.abastecimiento.filter(r=>r.estado==='Resuelto');
+  const listas = state.abastecimiento.filter(r=>abArchivoDe(r.estado));
   if(!listas.length) return;
   abMoviendo = true;
   try{
-    const porMes = {};
+    const grupos = {};
     listas.forEach(r=>{
-      if(!r.resueltoAt){ r.resueltoAt = new Date().toISOString(); r.resueltoPor = state.whoami||'—'; }
+      const tipo = abArchivoDe(r.estado), a = AB_ARCHIVOS[tipo];
+      if(!r[a.at]){ r[a.at] = new Date().toISOString(); r[a.por] = state.whoami||'—'; }
       if(!r.creadoAt) r.creadoAt = new Date().toISOString(); // filas antiguas sin fecha: quedan en el mes actual
-      (porMes[abMesDe(r)] = porMes[abMesDe(r)] || []).push(r);
+      const g = tipo+':'+abMesDe(r);
+      (grupos[g] = grupos[g] || []).push(r);
     });
     const movidas = [];
-    for(const mes of Object.keys(porMes)){
+    for(const g of Object.keys(grupos)){
+      const [tipo, mes] = g.split(':');
       let lista;
-      try{ lista = await abLeerMes(mes); }catch(e){ console.error('no se pudo leer resueltos', mes, e); continue; }
-      porMes[mes].forEach(r=>{ if(!lista.some(x=>x.id===r.id)) lista.push(r); });
-      const ok = await storageSet('abastecimiento:resueltos:'+mes, lista, true);
-      if(!ok) continue; // queda en pendientes como Resuelto y se reintenta en el próximo refresco
-      abResCache[mes] = lista;
-      porMes[mes].forEach(r=>movidas.push(r.id));
+      try{ lista = await abLeerMes(tipo, mes); }catch(e){ console.error('no se pudo leer', g, e); continue; }
+      grupos[g].forEach(r=>{ if(!lista.some(x=>x.id===r.id)) lista.push(r); });
+      const ok = await storageSet('abastecimiento:'+g, lista, true);
+      if(!ok) continue; // queda en pendientes con su estado y se reintenta en el próximo refresco
+      abResCache[g] = lista;
+      grupos[g].forEach(r=>movidas.push(r.id));
     }
     if(movidas.length){
       state.abastecimiento = state.abastecimiento.filter(r=>!movidas.includes(r.id));
       movidas.forEach(id=>abBorradas.add(id));
       abGuardar(); abFlushGuardado();
       renderTabs();
-      // la fila resuelta sale de la tabla aunque alguien esté escribiendo en otra
+      // la fila archivada sale de la tabla aunque alguien esté escribiendo en otra
       movidas.forEach(id=>{ const tr = document.querySelector('#ab-tbody tr[data-id="'+id+'"]'); if(tr) tr.remove(); });
-      if(abMontado){ if(abSub==='resueltos') abPintarResueltos(); else abRefrescarTabla(); }
+      if(abMontado){ if(AB_ARCHIVOS[abSub]) abPintarArchivo(); else abRefrescarTabla(); }
     }
   }finally{ abMoviendo = false; }
 }
-async function abVolverAPendientes(id, mes){
+async function abVolverAPendientes(tipo, id, mes){
   if(!confirm('¿Devolver este producto a Pendientes?')) return;
   let lista;
-  try{ lista = await abLeerMes(mes); }catch(e){ alert('No se pudo conectar con el servidor. Intenta de nuevo.'); return; }
+  try{ lista = await abLeerMes(tipo, mes); }catch(e){ alert('No se pudo conectar con el servidor. Intenta de nuevo.'); return; }
   const r = lista.find(x=>x.id===id);
   if(!r) return;
-  const ok = await storageSet('abastecimiento:resueltos:'+mes, lista.filter(x=>x.id!==id), true);
+  const resto = lista.filter(x=>x.id!==id);
+  const ok = await storageSet('abastecimiento:'+tipo+':'+mes, resto, true);
   if(!ok){ alert('No se pudo guardar el cambio. Intenta de nuevo.'); return; }
-  abResCache[mes] = lista.filter(x=>x.id!==id);
+  abResCache[tipo+':'+mes] = resto;
+  const a = AB_ARCHIVOS[tipo];
   const fila = Object.assign({}, r, { estado:'Pendiente' });
-  delete fila.resueltoAt; delete fila.resueltoPor;
+  delete fila[a.at]; delete fila[a.por];
   state.abastecimiento.push(fila);
   abNuevas.add(fila.id);
   abGuardar(); abFlushGuardado();
   renderTabs();
-  abPintarResueltos();
+  abPintarArchivo();
 }
-function abRenderResueltos(){
+function abRenderArchivo(){
+  const a = AB_ARCHIVOS[abSub];
   document.getElementById('ab-body').innerHTML = `
     <div class="ab-toolbar">
       <label for="ab-res-mes">Mes</label>
-      <input type="month" id="ab-res-mes" value="${abResMes}" onchange="abResMes=this.value||todayStr().slice(0,7);abCargarResueltos()">
+      <input type="month" id="ab-res-mes" value="${abResMes}" onchange="abResMes=this.value||todayStr().slice(0,7);abCargarArchivo()">
       <span class="ab-conteo" id="ab-res-conteo"></span>
       <span class="ab-grow"></span>
       <button class="ghost" onclick="abExportarMes()">Exportar mes a Excel</button>
@@ -3550,7 +3565,7 @@ function abRenderResueltos(){
       <table class="ab-tabla">
         <thead><tr>
           <th style="width:88px;">Agregado</th>
-          <th style="width:120px;">Resuelto</th>
+          <th style="width:120px;">${a.col}</th>
           <th style="width:95px;">Plataforma</th>
           <th style="width:100px;">Envío / Retiro</th>
           <th style="width:90px;">N° de pedido</th>
@@ -3569,38 +3584,41 @@ function abRenderResueltos(){
     const b = e.target.closest('[data-act]');
     if(!b) return;
     if(b.dataset.act==='copy') abCopiar(b, b.dataset.sku);
-    if(b.dataset.act==='volver') abVolverAPendientes(b.dataset.id, abResMes);
+    if(b.dataset.act==='volver') abVolverAPendientes(abSub, b.dataset.id, abResMes);
   });
-  abCargarResueltos();
+  abCargarArchivo();
 }
-async function abCargarResueltos(){
-  const mes = abResMes;
-  try{ abResCache[mes] = await abLeerMes(mes); }
-  catch(e){ console.error('no se pudo leer resueltos', e); if(!abResCache[mes]){ abPintarResueltos('No se pudo conectar con el servidor.'); return; } }
-  if(mes===abResMes) abPintarResueltos();
+async function abCargarArchivo(){
+  const tipo = abSub, mes = abResMes, g = tipo+':'+mes;
+  if(!AB_ARCHIVOS[tipo]) return;
+  try{ abResCache[g] = await abLeerMes(tipo, mes); }
+  catch(e){ console.error('no se pudo leer', g, e); if(!abResCache[g]){ abPintarArchivo('No se pudo conectar con el servidor.'); return; } }
+  if(tipo===abSub && mes===abResMes) abPintarArchivo();
 }
 function abFechaCorta(iso){
   if(!iso) return '—';
   const d = new Date(iso);
   return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
 }
-function abResueltosOrdenados(){
-  return (abResCache[abResMes]||[]).slice().sort((a,b)=>String(a.creadoAt||'').localeCompare(String(b.creadoAt||'')));
+function abArchivoOrdenado(){
+  return (abResCache[abSub+':'+abResMes]||[]).slice().sort((a,b)=>String(a.creadoAt||'').localeCompare(String(b.creadoAt||'')));
 }
-function abPintarResueltos(msg){
+function abColorPlat(v){ return v==='BUHO' ? 'var(--naranjo)' : (v==='WHATSAPP' ? '#1e8e4f' : 'var(--turquesa)'); }
+function abPintarArchivo(msg){
   const tb = document.getElementById('ab-res-tbody');
-  if(!tb) return;
-  const rows = abResueltosOrdenados();
+  const a = AB_ARCHIVOS[abSub];
+  if(!tb || !a) return;
+  const rows = abArchivoOrdenado();
   const cont = document.getElementById('ab-res-conteo');
-  if(cont) cont.innerHTML = '<b>'+rows.length+'</b> productos resueltos en el mes';
+  if(cont) cont.innerHTML = '<b>'+rows.length+'</b> productos '+a.plural+' en el mes';
   if(msg || !rows.length){
-    tb.innerHTML = '<tr><td class="ab-vacio" colspan="11">'+escapeHtml(msg || 'No hay productos resueltos en este mes.')+'</td></tr>';
+    tb.innerHTML = '<tr><td class="ab-vacio" colspan="11">'+escapeHtml(msg || 'No hay productos '+a.plural+' en este mes.')+'</td></tr>';
     return;
   }
   tb.innerHTML = rows.map(r=>'<tr>'
     + '<td class="ab-txt">'+abFechaCorta(r.creadoAt)+'</td>'
-    + '<td class="ab-txt">'+abFechaCorta(r.resueltoAt)+'<div class="ab-meta">'+escapeHtml(r.resueltoPor||'')+'</div></td>'
-    + '<td class="ab-txt"><b style="color:'+(r.plataforma==='BUHO'?'var(--naranjo)':'var(--turquesa)')+'">'+escapeHtml(r.plataforma)+'</b></td>'
+    + '<td class="ab-txt">'+abFechaCorta(r[a.at])+'<div class="ab-meta">'+escapeHtml(r[a.por]||'')+'</div></td>'
+    + '<td class="ab-txt"><b style="color:'+abColorPlat(r.plataforma)+'">'+escapeHtml(r.plataforma)+'</b></td>'
     + '<td class="ab-txt">'+escapeHtml(r.envio)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.pedido)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.producto)+'</td>'
@@ -3612,19 +3630,21 @@ function abPintarResueltos(msg){
     + '</tr>').join('');
 }
 async function abExportarMes(){
+  const a = AB_ARCHIVOS[abSub];
+  if(!a) return;
   try{ await abCargarXLSX(); }catch(err){ alert(err.message); return; }
-  const data = [['Fecha agregado','Fecha resuelto','Resuelto por','Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento']];
-  abResueltosOrdenados().forEach(r=>data.push([abFechaCorta(r.creadoAt),abFechaCorta(r.resueltoAt),r.resueltoPor||'',r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs]));
+  const data = [['Fecha agregado','Fecha '+a.col.toLowerCase(),a.col+' por','Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento']];
+  abArchivoOrdenado().forEach(r=>data.push([abFechaCorta(r.creadoAt),abFechaCorta(r[a.at]),r[a.por]||'',r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs]));
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [{wch:12},{wch:12},{wch:14},{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50}];
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Resueltos '+abResMes);
-  XLSX.writeFile(wb, 'abastecimiento_resueltos_'+abResMes+'.xlsx');
+  XLSX.utils.book_append_sheet(wb, ws, a.titulo+' '+abResMes);
+  XLSX.writeFile(wb, 'abastecimiento_'+abSub+'_'+abResMes+'.xlsx');
 }
-function abRemotoResueltos(key){
-  const mes = key.slice('abastecimiento:resueltos:'.length);
-  if(abMontado && abSub==='resueltos' && mes===abResMes) abCargarResueltos();
-  else delete abResCache[mes];
+function abRemotoArchivo(key){
+  const g = key.slice('abastecimiento:'.length); // 'resueltos:YYYY-MM' o 'rechazados:YYYY-MM'
+  if(abMontado && g===abSub+':'+abResMes) abCargarArchivo();
+  else delete abResCache[g];
 }
 
 function abOnInput(e){
@@ -3651,10 +3671,11 @@ function abOnChange(e){
   abMarcar(r.id, f);
   if(f==='estado'){
     el.className = 'ab-sel est '+abClsEst(r.estado);
-    if(r.estado==='Resuelto'){
-      r.resueltoAt = new Date().toISOString(); r.resueltoPor = state.whoami||'—';
-      abMarcar(r.id,'resueltoAt'); abMarcar(r.id,'resueltoPor');
-      setTimeout(abMoverResueltos, 350); // se deja ver el cambio de color antes de que la fila pase a Resueltos
+    const a = AB_ARCHIVOS[abArchivoDe(r.estado)];
+    if(a){
+      r[a.at] = new Date().toISOString(); r[a.por] = state.whoami||'—';
+      abMarcar(r.id, a.at); abMarcar(r.id, a.por);
+      setTimeout(abMoverArchivados, 350); // se deja ver el cambio de color antes de que la fila pase a su subpestaña
     }
   }
 }
@@ -3766,7 +3787,7 @@ function abOnKeydown(e){
 async function abExportar(){
   try{ await abCargarXLSX(); }catch(err){ alert(err.message); return; }
   const data = [['Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento','Estado']];
-  state.abastecimiento.filter(r=>r.estado!=='Resuelto').forEach(r=>data.push([r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs,r.estado]));
+  state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).forEach(r=>data.push([r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs,r.estado]));
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50},{wch:11}];
   const wb = XLSX.utils.book_new();
