@@ -878,6 +878,30 @@ async function procesarEntrantesShopify(){
    propia clave 'shopify:entrantes:pickup:<fecha y hora>' (así una corrida no pisa a otra
    que aún no se procesó; también se acepta 'shopify:entrantes:pickup' sola). Aquí se
    juntan todas, pasan a 'pickup:list' y cada clave queda vacía. */
+function numeroPickup(v){
+  return (v || '').toString().trim().replace(/^(#|N[°º.]?)\s*/i, ''); // '#53091' o 'N° 53091' -> '53091'
+}
+/* Deja un solo registro por número (normalizado). Si se repite, se queda el que ya fue
+   marcado (Está / No Está Físicamente) o, si ninguno, el más antiguo. */
+function sinDuplicadosPickup(lista){
+  const porNumero = new Map();
+  lista.forEach(p => {
+    const numero = numeroPickup(p.numero);
+    const prev = porNumero.get(numero);
+    const item = numero===p.numero ? p : Object.assign({}, p, {numero});
+    if(!prev) return porNumero.set(numero, item);
+    const prevMarcado = prev.estado!=='pendiente', itemMarcado = item.estado!=='pendiente';
+    if(itemMarcado && !prevMarcado) porNumero.set(numero, item);
+    else if(itemMarcado===prevMarcado && new Date(item.createdAt) < new Date(prev.createdAt)) porNumero.set(numero, item);
+  });
+  const quedan = new Set(porNumero.values());
+  const out = [];
+  lista.forEach(p => { const q = porNumero.get(numeroPickup(p.numero)); if(quedan.has(q)){ out.push(q); quedan.delete(q); } });
+  return out;
+}
+function hayDuplicadosPickup(lista){
+  return lista.length !== new Set(lista.map(p=>numeroPickup(p.numero))).size || lista.some(p=>p.numero!==numeroPickup(p.numero));
+}
 let procesandoPickup = false;
 async function procesarEntrantesPickup(){
   if(procesandoPickup) return;
@@ -886,13 +910,13 @@ async function procesarEntrantesPickup(){
     const { data, error } = await sb.from('kv_store').select('key,value').like('key','shopify:entrantes:pickup%');
     if(error) throw error;
     const filas = (data||[]).filter(f => Array.isArray(f.value) ? f.value.length : !!f.value);
-    if(!filas.length) return;
+    if(!filas.length && !hayDuplicadosPickup(state.pickup)) return;
     // Igual que en procesarEntrantesShopify: se parte de la lista más actual del servidor para no pisar cambios de otros.
     const actuales = await storageGet('pickup:list', true, state.pickup);
     filas.forEach(f => {
       (Array.isArray(f.value) ? f.value : [f.value]).forEach(item => {
-        const numero = (item && typeof item==='object' ? (item.numero || '') : (item || '')).toString().trim().replace(/^#/, '');
-        if(!numero || actuales.some(x=>x.numero===numero)) return; // vacío o ya existe, evita duplicados
+        const numero = numeroPickup(item && typeof item==='object' ? item.numero : item);
+        if(!numero || actuales.some(x=>numeroPickup(x.numero)===numero)) return; // vacío o ya existe, evita duplicados
         actuales.unshift({
           id:uid(), numero, estado:'pendiente',
           createdAt:new Date().toISOString(), createdBy:'Shopify',
@@ -900,7 +924,7 @@ async function procesarEntrantesPickup(){
         });
       });
     });
-    state.pickup = actuales;
+    state.pickup = sinDuplicadosPickup(actuales);
     if(!await storageSet('pickup:list', state.pickup, true)) return; // si no se guardó, las claves quedan para el próximo intento
     for(const f of filas) await storageSet(f.key, [], true);
     render();
