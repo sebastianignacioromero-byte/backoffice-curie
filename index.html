@@ -357,6 +357,8 @@
     transition:background .12s ease,color .12s ease;
   }
   .confirmar-btn:hover{background:var(--turquesa);color:#fff;}
+  .confirmar-btn.pickup-no{border-color:#c0392b;color:#c0392b;}
+  .confirmar-btn.pickup-no:hover{background:#c0392b;color:#fff;}
   .recordatorio-lista li.item-confirmado{opacity:.6;}
   .item-confirmado .recordatorio-pedido, .item-confirmado .recordatorio-medicamento{text-decoration:line-through;}
   .confirmado-tag{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--texto-suave);white-space:nowrap;}
@@ -829,7 +831,8 @@ let state = {
   calAnio: new Date().getFullYear(),
   calMes: new Date().getMonth(),
   calNotas: {},
-  abastecimiento:[]
+  abastecimiento:[],
+  pickup:[]
 };
 
 function estadoPedido(p){
@@ -871,6 +874,29 @@ async function procesarEntrantesShopify(){
   await storageSet('shopify:entrantes', [], true);
   render();
 }
+/* Pedidos con tag "plazo-vencido": Shopify los deja en 'shopify:entrantes:pickup'
+   (igual que 'shopify:entrantes' para receta retenida) y aquí pasan a 'pickup:list'. */
+async function procesarEntrantesPickup(){
+  let entrantes = await storageGet('shopify:entrantes:pickup', true, []);
+  if(!entrantes) return;
+  if(!Array.isArray(entrantes)) entrantes = [entrantes];
+  if(!entrantes.length) return;
+  // Igual que arriba: se parte de la lista más actual del servidor para no pisar cambios de otros.
+  const actuales = await storageGet('pickup:list', true, state.pickup);
+  entrantes.forEach(item => {
+    const numero = (item && typeof item==='object' ? (item.numero || '') : (item || '')).toString().trim().replace(/^#/, '');
+    if(!numero || actuales.some(x=>x.numero===numero)) return; // vacío o ya existe, evita duplicados
+    actuales.unshift({
+      id:uid(), numero, estado:'pendiente',
+      createdAt:new Date().toISOString(), createdBy:'Shopify',
+      marcadoPor:null, marcadoAt:null
+    });
+  });
+  state.pickup = actuales;
+  await storageSet('pickup:list', state.pickup, true);
+  await storageSet('shopify:entrantes:pickup', [], true);
+  render();
+}
 
 let pendingSaves = {};
 let failStreak = 0;
@@ -900,7 +926,8 @@ async function respaldoDiarioGoogleSheets(){
       stickersSinRespuesta: state.stickersSinRespuesta,
       checklistToday: state.checklistToday,
       notas: state.notas,
-      abastecimiento: state.abastecimiento
+      abastecimiento: state.abastecimiento,
+      pickup: state.pickup
     };
     // Los Apps Script de Google no devuelven encabezados CORS, así que usamos
     // "no-cors": el envío sí le llega a Google, pero no podemos leer su respuesta.
@@ -963,6 +990,7 @@ function guardarCopiaLocal(){
       checklistToday: state.checklistToday,
       calNotas: state.calNotas,
       abastecimiento: state.abastecimiento,
+      pickup: state.pickup,
       guardadoEn: new Date().toISOString()
     };
     localStorage.setItem('curie_backoffice_copia', JSON.stringify(snapshot));
@@ -1042,7 +1070,7 @@ function showSuccessToast(){
 
 async function loadAll(){
   lecturasFallidasCiclo = 0; lecturasTotalCiclo = 0;
-  const [template, pendientes, notas, pedidos, stickers, recetasDigitales, pedidosSinReceta, stickersSinRespuesta, repartidores, feriados, avance, avanceHistorial, checklistToday, calNotas, abastecimiento] = await Promise.all([
+  const [template, pendientes, notas, pedidos, stickers, recetasDigitales, pedidosSinReceta, stickersSinRespuesta, repartidores, feriados, avance, avanceHistorial, checklistToday, calNotas, abastecimiento, pickup] = await Promise.all([
     storageGet('checklist:template', true, [
       {id:uid(), text:'Revisar pedidos sin asignar en Shipday'},
       {id:uid(), text:'Confirmar despachos del día por WhatsApp'},
@@ -1062,7 +1090,8 @@ async function loadAll(){
     storageGet('avance:historial', true, []),
     storageGet('checklist:'+todayStr(), true, null),
     storageGet('calendario:notas', true, {}),
-    storageGet('abastecimiento:list', true, [])
+    storageGet('abastecimiento:list', true, []),
+    storageGet('pickup:list', true, [])
   ]);
   state.checklistTemplate = template;
   state.pendientes = pendientes;
@@ -1078,6 +1107,7 @@ async function loadAll(){
   state.avanceHistorial = avanceHistorial;
   state.calNotas = calNotas;
   state.abastecimiento = abastecimiento;
+  state.pickup = pickup;
 
   if(checklistToday === null){
     state.checklistToday = template.map(t => ({id:t.id, text:t.text, done:false, doneBy:null, doneAt:null}));
@@ -1110,6 +1140,7 @@ async function loadAll(){
       state.checklistToday = copia.checklistToday||state.checklistToday;
       state.calNotas = copia.calNotas||{};
       state.abastecimiento = copia.abastecimiento||[];
+      state.pickup = copia.pickup||[];
       modoRespaldoFecha = copia.guardadoEn;
     }
     modoRespaldo = true;
@@ -1120,7 +1151,7 @@ async function loadAll(){
   }
 
   state.loaded = true;
-  if(!modoRespaldo) await procesarEntrantesShopify();
+  if(!modoRespaldo){ await procesarEntrantesShopify(); await procesarEntrantesPickup(); }
 }
 
 async function refreshBackground(){
@@ -1139,7 +1170,8 @@ async function refreshBackground(){
     ['avance:historial', state.avanceHistorial],
     ['checklist:'+todayStr(), state.checklistToday],
     ['calendario:notas', state.calNotas],
-    ['abastecimiento:list', state.abastecimiento]
+    ['abastecimiento:list', state.abastecimiento],
+    ['pickup:list', state.pickup]
   ];
   const fetched = await Promise.all(keyMap.map(([k, fallback]) => storageGet(k, true, fallback)));
   const todoFalló = lecturasTotalCiclo>0 && lecturasFallidasCiclo===lecturasTotalCiclo;
@@ -1164,13 +1196,14 @@ async function refreshBackground(){
       else if(k.startsWith('checklist:')) state.checklistToday = val;
       else if(k==='calendario:notas') state.calNotas = val;
       else if(k==='abastecimiento:list') abAplicarRemota(val);
+      else if(k==='pickup:list') state.pickup = val;
     });
     if(modoRespaldo){ modoRespaldo = false; } // se recuperó la conexión
     guardarCopiaLocal();
     respaldoDiarioGoogleSheets();
   }
   if(!document.querySelector('.modal-overlay')) render();
-  if(!modoRespaldo) await procesarEntrantesShopify();
+  if(!modoRespaldo){ await procesarEntrantesShopify(); await procesarEntrantesPickup(); }
 }
 
 /* ---------- RENDER ---------- */
@@ -1207,6 +1240,7 @@ function tabCount(tab){
   if(tab==='calendario') return '';
   if(tab==='reporte') return '';
   if(tab==='abastecimiento') return state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).length || '';
+  if(tab==='pickup') return state.pickup.filter(p=>p.estado==='pendiente').length || '';
   return '';
 }
 
@@ -1220,6 +1254,7 @@ function renderTabs(){
     {id:'notas', label:'Notas', ico:'✎'},
     {id:'historial', label:'Historial', ico:'🕘'},
     {id:'abastecimiento', label:'Abastecimiento', ico:'🛒'},
+    {id:'pickup', label:'Pick-Up', ico:'🏬'},
     {id:'reporte', label:'Reporte mensual', ico:'📊'}
   ];
   document.getElementById('tabs').innerHTML = tabs.map(t => `
@@ -1273,6 +1308,7 @@ function renderContent(){
   if(state.tab==='notas') return renderNotasTab(c);
   if(state.tab==='historial') return renderHistorialTab(c);
   if(state.tab==='abastecimiento') return renderAbastecimientoTab(c);
+  if(state.tab==='pickup') return renderPickupTab(c);
   if(state.tab==='reporte') return renderReporteTab(c);
 }
 
@@ -1985,6 +2021,57 @@ async function restaurarDesdeStickerSinRespuesta(id){
   await storageSet('stickers:list', state.stickers, true);
   await storageSet('stickerssinrespuesta:list', state.stickersSinRespuesta, true);
   pedidosSubTab = 'sticker';
+  render();
+}
+
+/* ---- Pick-Up (pedidos con tag plazo-vencido) ---- */
+let pickupSubTab = 'pendientes';
+function setPickupSubTab(t){ pickupSubTab = t; render(); }
+function renderPickupTab(c){
+  const pendientes = state.pickup.filter(p=>p.estado==='pendiente');
+  const fisicos = state.pickup.filter(p=>p.estado==='fisico');
+  const noFisicos = state.pickup.filter(p=>p.estado==='no_fisico');
+  const porMarca = (a,b)=> new Date(b.marcadoAt)-new Date(a.marcadoAt);
+  c.innerHTML = `
+    <div class="row-between">
+      <div>
+        <h2 class="titulo">Pick-Up</h2>
+        <p class="subt">Pedidos con el tag plazo-vencido, recibidos automáticamente desde Shopify.</p>
+      </div>
+    </div>
+    <div class="subtabs">
+      <button class="subtab-btn ${pickupSubTab==='pendientes'?'active':''}" onclick="setPickupSubTab('pendientes')">Pendientes${pendientes.length ? ` <span class="subtab-badge">${pendientes.length}</span>` : ''}</button>
+      <button class="subtab-btn ${pickupSubTab==='fisico'?'active':''}" onclick="setPickupSubTab('fisico')">Está Físicamente</button>
+      <button class="subtab-btn ${pickupSubTab==='no_fisico'?'active':''}" onclick="setPickupSubTab('no_fisico')">No Está Físicamente</button>
+    </div>
+    ${pickupSubTab==='pendientes' ? (pendientes.length ? pendientes.map(p => `
+      <div class="pedido-card compacto" style="cursor:default;">
+        <span class="pedido-num">#${escapeHtml(p.numero)}</span>
+        <span class="pedido-prod">${fmtDateShort(p.createdAt)}</span>
+        <button class="confirmar-btn" onclick="marcarPickup('${p.id}','fisico')">Está Físicamente</button>
+        <button class="confirmar-btn pickup-no" onclick="marcarPickup('${p.id}','no_fisico')">No Está Físicamente</button>
+      </div>
+    `).join('') : '<div class="empty-state">No hay pedidos pendientes de revisar.</div>') : ''}
+    ${pickupSubTab==='fisico' ? pickupRegistroHtml(fisicos.sort(porMarca), 'No hay pedidos marcados como "Está Físicamente".') : ''}
+    ${pickupSubTab==='no_fisico' ? pickupRegistroHtml(noFisicos.sort(porMarca), 'No hay pedidos marcados como "No Está Físicamente".') : ''}
+  `;
+}
+function pickupRegistroHtml(lista, vacio){
+  return lista.length ? lista.map(p => `
+    <div class="pedido-card compacto" style="cursor:default;">
+      <span class="pedido-num">#${escapeHtml(p.numero)}</span>
+      <span class="pedido-prod">Marcado por ${escapeHtml(p.marcadoPor||'—')} · ${fmtDateShort(p.marcadoAt)}</span>
+      <button class="link" onclick="marcarPickup('${p.id}','pendiente')">↩ Deshacer</button>
+    </div>
+  `).join('') : `<div class="empty-state">${vacio}</div>`;
+}
+async function marcarPickup(id, estado){
+  const p = state.pickup.find(x=>x.id===id);
+  if(!p) return;
+  p.estado = estado;
+  p.marcadoPor = estado==='pendiente' ? null : (state.whoami||'—');
+  p.marcadoAt = estado==='pendiente' ? null : new Date().toISOString();
+  await storageSet('pickup:list', state.pickup, true);
   render();
 }
 
@@ -3068,6 +3155,10 @@ function aplicarCambioRemoto(key, value){
     if(Array.isArray(value) && value.length) procesarEntrantesShopify();
     return;
   }
+  if(key==='shopify:entrantes:pickup'){
+    if(value && (!Array.isArray(value) || value.length)) procesarEntrantesPickup();
+    return;
+  }
   if(key==='pendientes:list') state.pendientes = value;
   else if(key==='notas:list') state.notas = value;
   else if(key==='pedidos:list') state.pedidos = value;
@@ -3082,6 +3173,7 @@ function aplicarCambioRemoto(key, value){
   else if(key==='checklist:'+todayStr()) state.checklistToday = value;
   else if(key==='calendario:notas') state.calNotas = value;
   else if(key==='abastecimiento:list') abAplicarRemota(value);
+  else if(key==='pickup:list') state.pickup = value;
   else return;
   if(!document.querySelector('.modal-overlay')) render();
 }
