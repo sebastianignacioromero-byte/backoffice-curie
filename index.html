@@ -874,28 +874,41 @@ async function procesarEntrantesShopify(){
   await storageSet('shopify:entrantes', [], true);
   render();
 }
-/* Pedidos con tag "plazo-vencido": Shopify los deja en 'shopify:entrantes:pickup'
-   (igual que 'shopify:entrantes' para receta retenida) y aquí pasan a 'pickup:list'. */
+/* Pedidos con tag "plazo-vencido": cada corrida del Flow de Shopify deja su lista en su
+   propia clave 'shopify:entrantes:pickup:<fecha y hora>' (así una corrida no pisa a otra
+   que aún no se procesó; también se acepta 'shopify:entrantes:pickup' sola). Aquí se
+   juntan todas, pasan a 'pickup:list' y cada clave queda vacía. */
+let procesandoPickup = false;
 async function procesarEntrantesPickup(){
-  let entrantes = await storageGet('shopify:entrantes:pickup', true, []);
-  if(!entrantes) return;
-  if(!Array.isArray(entrantes)) entrantes = [entrantes];
-  if(!entrantes.length) return;
-  // Igual que arriba: se parte de la lista más actual del servidor para no pisar cambios de otros.
-  const actuales = await storageGet('pickup:list', true, state.pickup);
-  entrantes.forEach(item => {
-    const numero = (item && typeof item==='object' ? (item.numero || '') : (item || '')).toString().trim().replace(/^#/, '');
-    if(!numero || actuales.some(x=>x.numero===numero)) return; // vacío o ya existe, evita duplicados
-    actuales.unshift({
-      id:uid(), numero, estado:'pendiente',
-      createdAt:new Date().toISOString(), createdBy:'Shopify',
-      marcadoPor:null, marcadoAt:null
+  if(procesandoPickup) return;
+  procesandoPickup = true;
+  try{
+    const { data, error } = await sb.from('kv_store').select('key,value').like('key','shopify:entrantes:pickup%');
+    if(error) throw error;
+    const filas = (data||[]).filter(f => Array.isArray(f.value) ? f.value.length : !!f.value);
+    if(!filas.length) return;
+    // Igual que en procesarEntrantesShopify: se parte de la lista más actual del servidor para no pisar cambios de otros.
+    const actuales = await storageGet('pickup:list', true, state.pickup);
+    filas.forEach(f => {
+      (Array.isArray(f.value) ? f.value : [f.value]).forEach(item => {
+        const numero = (item && typeof item==='object' ? (item.numero || '') : (item || '')).toString().trim().replace(/^#/, '');
+        if(!numero || actuales.some(x=>x.numero===numero)) return; // vacío o ya existe, evita duplicados
+        actuales.unshift({
+          id:uid(), numero, estado:'pendiente',
+          createdAt:new Date().toISOString(), createdBy:'Shopify',
+          marcadoPor:null, marcadoAt:null
+        });
+      });
     });
-  });
-  state.pickup = actuales;
-  await storageSet('pickup:list', state.pickup, true);
-  await storageSet('shopify:entrantes:pickup', [], true);
-  render();
+    state.pickup = actuales;
+    if(!await storageSet('pickup:list', state.pickup, true)) return; // si no se guardó, las claves quedan para el próximo intento
+    for(const f of filas) await storageSet(f.key, [], true);
+    render();
+  }catch(e){
+    console.error('no se pudieron leer los pedidos de Pick-Up entrantes', e);
+  }finally{
+    procesandoPickup = false;
+  }
 }
 
 let pendingSaves = {};
@@ -3155,7 +3168,7 @@ function aplicarCambioRemoto(key, value){
     if(Array.isArray(value) && value.length) procesarEntrantesShopify();
     return;
   }
-  if(key==='shopify:entrantes:pickup'){
+  if(key.startsWith('shopify:entrantes:pickup')){
     if(value && (!Array.isArray(value) || value.length)) procesarEntrantesPickup();
     return;
   }
