@@ -671,6 +671,7 @@
   .ab-ac-msg{padding:10px 12px;font-size:12.5px;color:var(--texto-suave);}
   .ab-sku{display:flex;align-items:center;gap:2px;}
   .ab-sku .ab-inp{flex:1;min-width:0;}
+  .ab-tabla .ab-sku .ab-inp.num{padding-left:4px;padding-right:4px;font-variant-numeric:tabular-nums;}
   .ab-copy{background:none;border:none;color:var(--texto-suave);cursor:pointer;padding:5px;border-radius:var(--radio-chico);line-height:0;flex:none;}
   .ab-copy:hover{color:var(--turquesa);background:var(--turquesa-suave);}
   .ab-copy.ok{color:var(--turquesa);}
@@ -679,11 +680,17 @@
   .ab-meta{font-size:11.5px;color:var(--texto-suave);}
   .ab-prev{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
   /* Fila cuyo SKU tiene stock en Bsale: lo normal es que lo pedido esté en cero, así que se destaca */
-  .ab-tabla tbody tr.ab-con-stock td{background:#fde7c4;}
-  .ab-tabla tbody tr.ab-con-stock td:first-child{box-shadow:inset 4px 0 0 var(--naranjo);}
-  .ab-stock{font-size:11.5px;font-weight:700;color:var(--texto-suave);text-align:right;padding:0 8px 2px;}
-  .ab-stock:empty{display:none;}
-  .ab-con-stock .ab-stock{color:#9a5b00;}
+  .ab-tabla tbody tr.ab-con-stock td{background:#f6c4be;}
+  .ab-tabla tbody tr.ab-con-stock td:first-child{box-shadow:inset 5px 0 0 #b52a1e;}
+  .ab-tabla td.ab-c-stock,.ab-tabla th.ab-c-stock{text-align:center;}
+  .ab-tabla td.ab-c-stock{padding-top:9px;}
+  .ab-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px 3px 8px;border-radius:999px;font-size:11.5px;font-weight:700;
+    line-height:1.4;white-space:nowrap;border:1px solid transparent;}
+  .ab-pill svg{flex:none;}
+  .ab-pill.si{background:#c0392b;color:#fff;border-color:#a93226;box-shadow:0 1px 2px rgba(120,25,15,.25);}
+  .ab-pill.ok{background:#e8f6ee;color:#1e7a46;border-color:#bfe5cf;}
+  .ab-pill.nd{background:transparent;color:var(--texto-suave);font-weight:500;padding-left:4px;padding-right:4px;}
+  .ab-pill.cargando{background:transparent;color:var(--texto-suave);font-weight:500;}
   .ab-prev th,.ab-prev td{padding:6px 8px;border-bottom:1px solid var(--borde);text-align:left;}
 </style>
 </head>
@@ -3365,13 +3372,13 @@ function abEstadoStock(r){
   const k = r ? abSkuKey(r.sku) : '';
   if(!k) return null;
   if(abWeb && Object.prototype.hasOwnProperty.call(abWeb, k)){
-    return abWeb[k] ? { con:true, txt:'Hay Stock', tit:'Este SKU aparece disponible en farmaciascurie.cl: revisar antes de pedir' }
-                    : { con:false, txt:'Ok', tit:'' };
+    return abWeb[k] ? { con:true, txt:'Hay stock', tit:'Este SKU aparece disponible en farmaciascurie.cl: revisar antes de pedir' }
+                    : { con:false, txt:'Ok', tit:'Agotado en farmaciascurie.cl: corresponde pedirlo' };
   }
   const st = abStockDe(r);
   if(st===null) return null;
-  return st>0 ? { con:true, txt:'Hay Stock', tit:'No está en la web, pero el Excel maestro de Bsale dice que tiene stock ('+st.toLocaleString('es-CL')+'): revisar antes de pedir' }
-              : { con:false, txt:'Ok', tit:'' };
+  return st>0 ? { con:true, txt:'Hay stock', tit:'No está en la web, pero el Excel maestro de Bsale dice que tiene stock ('+st.toLocaleString('es-CL')+'): revisar antes de pedir' }
+              : { con:false, txt:'Ok', tit:'No está en la web y el Excel maestro de Bsale lo tiene en cero: corresponde pedirlo' };
 }
 function abNumStock(v){ // "1.234" o "3,5" (formato chileno) o número -> número; vacío -> null
   if(typeof v==='number') return isFinite(v) ? v : null;
@@ -3381,13 +3388,21 @@ function abNumStock(v){ // "1.234" o "3,5" (formato chileno) o número -> númer
   return isFinite(n) ? n : null;
 }
 // Pinta (o despinta) la fila según el stock de su SKU, sin volver a dibujar la tabla
+const AB_ICO_CAJA = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>';
+const AB_ICO_CHECK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
+// Etiqueta de la columna Stock: "Hay stock" (destacada), "Ok" (agotado: se pide), "—" (sin dato) o "Revisando…"
+function abStockHTML(r, e){
+  if(e) return '<span class="ab-pill '+(e.con?'si':'ok')+'" title="'+escapeHtml(e.tit)+'">'+(e.con?AB_ICO_CAJA:AB_ICO_CHECK)+escapeHtml(e.txt)+'</span>';
+  if(!r || !abSkuKey(r.sku)) return '';
+  if(!abWeb && abWebInfo.cargando) return '<span class="ab-pill cargando">Revisando…</span>';
+  return '<span class="ab-pill nd" title="Este SKU no está en la web ni en el Excel maestro">—</span>';
+}
 function abAplicarStock(tr, r){
   if(!tr) return;
   const e = abEstadoStock(r), con = !!(e && e.con);
   tr.classList.toggle('ab-con-stock', con);
-  tr.title = con ? e.tit : '';
-  const el = tr.querySelector('.ab-stock');
-  if(el) el.textContent = e ? e.txt : '';
+  const el = tr.querySelector('td.ab-c-stock');
+  if(el) el.innerHTML = abStockHTML(r, e);
 }
 function abPintarStock(){
   document.querySelectorAll('#ab-tbody tr[data-id]').forEach(tr=>{
@@ -3400,6 +3415,7 @@ function abPintarStock(){
 async function abCargarWeb(){
   if(abWebInfo.cargando) return;
   abWebInfo.cargando = true; abPintarMaestro();
+  if(!abWeb) abPintarStock();
   try{
     const mapa = {};
     let pagina = 1, fin = false;
@@ -3607,12 +3623,13 @@ function abOpt(lista, val, conVacio){
 }
 function abFilaHTML(r){
   const e = abEstadoStock(r), con = !!(e && e.con);
-  return '<tr data-id="'+r.id+'"'+(con?' class="ab-con-stock" title="'+escapeHtml(e.tit)+'"':'')+'>'
+  return '<tr data-id="'+r.id+'"'+(con?' class="ab-con-stock"':'')+'>'
    + '<td><select class="ab-sel plat '+abClsPlat(r.plataforma)+'" data-f="plataforma">'+abOpt(AB_PLATAFORMAS,r.plataforma,true)+'</select></td>'
    + '<td><select class="ab-sel" data-f="envio">'+abOpt(AB_ENVIOS,r.envio,true)+'</select></td>'
    + '<td><input type="text" class="ab-inp" data-f="pedido" value="'+escapeHtml(r.pedido)+'" placeholder="N°"></td>'
    + '<td><input type="text" class="ab-inp" data-f="producto" value="'+escapeHtml(r.producto)+'" placeholder="Escribe para buscar…" autocomplete="off"></td>'
-   + '<td><div class="ab-sku"><input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">'+abBtnCopiar()+'</div><div class="ab-stock">'+(e?escapeHtml(e.txt):'')+'</div></td>'
+   + '<td><div class="ab-sku"><input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">'+abBtnCopiar()+'</div></td>'
+   + '<td class="ab-c-stock">'+abStockHTML(r, e)+'</td>'
    + '<td><input type="text" class="ab-inp num" data-f="cantidad" value="'+escapeHtml(r.cantidad)+'" placeholder="0"></td>'
    + '<td><select class="ab-sel" data-f="proveedor">'+abOpt(AB_PROVEEDORES,r.proveedor,true)+'</select></td>'
    + '<td><textarea class="ab-inp ab-obs" data-f="obs" rows="1" placeholder="Observación">'+escapeHtml(r.obs)+'</textarea></td>'
@@ -3636,7 +3653,7 @@ function abPintarFilas(){
   const rows = state.abastecimiento.filter(r=>!abArchivoDe(r.estado));
   tb.innerHTML = rows.length
     ? rows.map(abFilaHTML).join('')
-    : '<tr><td class="ab-vacio" colspan="10">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
+    : '<tr><td class="ab-vacio" colspan="11">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
   tb.querySelectorAll('textarea.ab-obs').forEach(abAutoGrow);
   abActualizarConteo();
 }
@@ -3703,7 +3720,8 @@ function abRenderPendientes(){
           <th style="width:115px;">Envío / Retiro</th>
           <th style="width:100px;">N° de pedido</th>
           <th>Nombre producto faltante</th>
-          <th class="num" style="width:135px;">SKU</th>
+          <th class="num" style="width:165px;">SKU</th>
+          <th class="ab-c-stock" style="width:108px;">Stock</th>
           <th class="num" style="width:90px;">Cantidad necesaria</th>
           <th style="width:120px;">Proveedor</th>
           <th style="width:17%;">Observación abastecimiento</th>
