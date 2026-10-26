@@ -678,6 +678,12 @@
   .ab-tabla td.ab-txt .ab-sku{justify-content:flex-end;}
   .ab-meta{font-size:11.5px;color:var(--texto-suave);}
   .ab-prev{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px;}
+  /* Fila cuyo SKU tiene stock en Bsale: lo normal es que lo pedido esté en cero, así que se destaca */
+  .ab-tabla tbody tr.ab-con-stock td{background:#fde7c4;}
+  .ab-tabla tbody tr.ab-con-stock td:first-child{box-shadow:inset 4px 0 0 var(--naranjo);}
+  .ab-stock{font-size:11.5px;font-weight:700;color:var(--texto-suave);text-align:right;padding:0 8px 2px;}
+  .ab-stock:empty{display:none;}
+  .ab-con-stock .ab-stock{color:#9a5b00;}
   .ab-prev th,.ab-prev td{padding:6px 8px;border-bottom:1px solid var(--borde);text-align:left;}
 </style>
 </head>
@@ -3249,6 +3255,8 @@ function setupRealtime(){
 
 /* ---- Abastecimiento ----
    Productos faltantes por pedido, con el SKU completado desde el maestro de Bsale.
+   Las filas cuyo SKU tiene stock se pintan (lo pedido normalmente debería estar en cero). El stock sale de la web
+   (farmaciascurie.cl/products.json, que Bsale mantiene al día) y, para los SKU que no están en la web, del Excel maestro.
    Filas en 'abastecimiento:list' y maestro en 'abastecimiento:maestro' (kv_store, compartidos por todo el equipo).
    Mientras la pestaña está montada se refresca solo la tabla, y nunca mientras alguien escribe en ella. */
 const AB_PLATAFORMAS = ['WEB','BUHO','WHATSAPP'];
@@ -3268,6 +3276,11 @@ let abNuevas = new Set(), abBorradas = new Set();
 let abTimerGuardado = null;
 let abRefrescoPendiente = false;
 let abMaestro = [];             // {n: nombre, k: sku, hn: nombre normalizado, h: nombre+sku normalizados}
+let abStock = null;             // sku normalizado -> stock total en Bsale (null si el maestro no trae stock)
+let abWeb = null;               // sku normalizado -> true/false disponible en la web (null hasta la primera carga)
+let abWebInfo = { at:null, error:'', cargando:false };
+const AB_WEB_URL = 'https://www.farmaciascurie.cl/products.json';
+const AB_WEB_CADA_MS = 5*60*1000;  // cada cuánto se vuelve a mirar la web mientras la pestaña está abierta
 let abMaestroInfo = null;       // {fecha, archivo, cargadoPor}
 let abMaestroCargado = false;   // ya se pidió el maestro al servidor (se baja solo al abrir la pestaña)
 let abMapeo = null;
@@ -3333,7 +3346,89 @@ window.addEventListener('beforeunload', abFlushGuardado);
 /* Maestro de productos */
 function abIndexar(items){
   abMaestro = items.map(([n,k])=>{ const hn = abNorm(n); return { n:n, k:k, hn:hn, h:hn+' '+abNorm(k) }; });
+  // stock: tercera posición de cada item (maestros antiguos no la tienen). Si un SKU aparece en varias filas (sucursales), se suma
+  abStock = null;
+  items.forEach(([n,k,st])=>{
+    if(typeof st!=='number' || !abSkuKey(k)) return;
+    abStock = abStock || {};
+    abStock[abSkuKey(k)] = (abStock[abSkuKey(k)]||0) + st;
+  });
 }
+function abSkuKey(k){ return String(k==null?'':k).trim().toLowerCase(); }
+function abStockDe(r){ // stock en Bsale del SKU de la fila según el Excel maestro, o null si no se sabe
+  if(!abStock || !r) return null;
+  const k = abSkuKey(r.sku);
+  return k && Object.prototype.hasOwnProperty.call(abStock, k) ? abStock[k] : null;
+}
+// ¿Tiene stock? Primero la web (al día); si el SKU no está publicado, el Excel. null si no hay dato
+function abEstadoStock(r){
+  const k = r ? abSkuKey(r.sku) : '';
+  if(!k) return null;
+  if(abWeb && Object.prototype.hasOwnProperty.call(abWeb, k)){
+    return abWeb[k] ? { con:true, txt:'Hay Stock', tit:'Este SKU aparece disponible en farmaciascurie.cl: revisar antes de pedir' }
+                    : { con:false, txt:'Ok', tit:'' };
+  }
+  const st = abStockDe(r);
+  if(st===null) return null;
+  return st>0 ? { con:true, txt:'Hay Stock', tit:'No está en la web, pero el Excel maestro de Bsale dice que tiene stock ('+st.toLocaleString('es-CL')+'): revisar antes de pedir' }
+              : { con:false, txt:'Ok', tit:'' };
+}
+function abNumStock(v){ // "1.234" o "3,5" (formato chileno) o número -> número; vacío -> null
+  if(typeof v==='number') return isFinite(v) ? v : null;
+  const t = String(v==null?'':v).trim().replace(/\s/g,'');
+  if(!t) return null;
+  const n = Number(t.replace(/\./g,'').replace(',','.'));
+  return isFinite(n) ? n : null;
+}
+// Pinta (o despinta) la fila según el stock de su SKU, sin volver a dibujar la tabla
+function abAplicarStock(tr, r){
+  if(!tr) return;
+  const e = abEstadoStock(r), con = !!(e && e.con);
+  tr.classList.toggle('ab-con-stock', con);
+  tr.title = con ? e.tit : '';
+  const el = tr.querySelector('.ab-stock');
+  if(el) el.textContent = e ? e.txt : '';
+}
+function abPintarStock(){
+  document.querySelectorAll('#ab-tbody tr[data-id]').forEach(tr=>{
+    abAplicarStock(tr, state.abastecimiento.find(r=>r.id===tr.dataset.id));
+  });
+}
+
+/* Stock de la web: el mismo catálogo público que usa el asistente de WhatsApp. No permite buscar por SKU,
+   así que se baja completo (de a 250 productos por página) y se vuelve a bajar cada AB_WEB_CADA_MS */
+async function abCargarWeb(){
+  if(abWebInfo.cargando) return;
+  abWebInfo.cargando = true; abPintarMaestro();
+  try{
+    const mapa = {};
+    let pagina = 1, fin = false;
+    while(!fin && pagina <= 80){ // tope defensivo (~20.000 productos)
+      const lote = await Promise.all([0,1,2,3].map(i=>
+        fetch(AB_WEB_URL+'?limit=250&page='+(pagina+i)).then(res=>{
+          if(!res.ok) throw new Error('la web respondió '+res.status);
+          return res.json();
+        }).then(d=>d.products||[])));
+      for(const prods of lote){
+        if(!prods.length){ fin = true; break; }
+        prods.forEach(p=>(p.variants||[]).forEach(v=>{
+          const k = abSkuKey(v.sku);
+          if(k) mapa[k] = !!mapa[k] || v.available===true; // SKU repetido: basta que una variante esté disponible
+        }));
+      }
+      pagina += lote.length;
+    }
+    abWeb = mapa;
+    abWebInfo.at = new Date(); abWebInfo.error = '';
+  }catch(e){
+    console.error('no se pudo leer el stock de la web', e);
+    abWebInfo.error = 'no se pudo leer el stock de la web';
+  }finally{ abWebInfo.cargando = false; }
+  abPintarMaestro();
+  abPintarStock();
+}
+setInterval(()=>{ if(abMontado && !document.hidden) abCargarWeb(); }, AB_WEB_CADA_MS);
+
 async function abRecargarMaestro(){
   if(!abMontado && !abMaestroCargado) return; // nadie lo ha necesitado todavía en esta pestaña del navegador
   try{
@@ -3347,14 +3442,23 @@ async function abRecargarMaestro(){
     abMaestroCargado = true;
   }catch(e){ console.error('no se pudo leer el maestro de abastecimiento', e); }
   abPintarMaestro();
+  abPintarStock();
 }
 function abPintarMaestro(){
+  const w = document.getElementById('ab-web-st');
+  if(w){
+    const hora = abWebInfo.at ? abWebInfo.at.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : '';
+    w.innerHTML = abWebInfo.cargando ? 'Stock web: actualizando…'
+      : abWebInfo.error ? '<span class="ab-sin">Stock web: '+escapeHtml(abWebInfo.error)+'</span>'+(hora?' (último: '+hora+')':'')
+      : hora ? 'Stock web: <b>'+Object.keys(abWeb).length.toLocaleString('es-CL')+'</b> SKU · '+hora : '';
+  }
   const el = document.getElementById('ab-maestro-st');
   if(!el) return;
   if(abMaestro.length){
     const f = abMaestroInfo && abMaestroInfo.fecha ? fmtDateShort(abMaestroInfo.fecha) : '';
     const quien = abMaestroInfo && abMaestroInfo.cargadoPor ? ' por '+escapeHtml(abMaestroInfo.cargadoPor) : '';
-    el.innerHTML = 'Maestro: <b>'+abMaestro.length.toLocaleString('es-CL')+'</b> productos'+(f?' · cargado el '+f+quien:'');
+    el.innerHTML = 'Maestro: <b>'+abMaestro.length.toLocaleString('es-CL')+'</b> productos'+(f?' · cargado el '+f+quien:'')
+
   } else if(!abMaestroCargado){
     el.innerHTML = 'Cargando maestro…';
   } else {
@@ -3379,24 +3483,26 @@ function abBuscar(q){
   return out.slice(0,15).map(o=>o.it);
 }
 
-/* Lectura del Excel: formato "Stock actual" de Bsale (encabezados "Producto" y "SKU", con filas de título arriba).
-   Si el archivo trae otro formato, se eligen las columnas a mano. */
+/* Lectura del Excel: formato "Stock actual" de Bsale (encabezados "Producto" y "SKU", con filas de título arriba,
+   y la columna de stock). Si el archivo trae otro formato, se eligen las columnas a mano. */
+const AB_PATRONES_STOCK = [/^stock disponible$/i,/stock disponible/i,/^stock actual$/i,/^stock$/i,/^stock(?!.*(reserv|m[ií]n|m[aá]x|valor|costo))/i,/^disponible$/i,/^cantidad$/i];
 function abEncabezadoExacto(aoa){
   for(let i=0;i<Math.min(30,aoa.length);i++){
     const hs = aoa[i].map(c=>String(c==null?'':c).trim().toLowerCase());
     const iN = hs.indexOf('producto'), iK = hs.indexOf('sku');
-    if(iN!==-1 && iK!==-1) return { hr:i, iN:iN, iK:iK };
+    if(iN!==-1 && iK!==-1) return { hr:i, iN:iN, iK:iK, iS:abElegirCol(hs, AB_PATRONES_STOCK) };
   }
   return null;
 }
-function abConstruirItems(aoa, hr, cn, ck, limite){
+function abConstruirItems(aoa, hr, cn, ck, limite, cs){
   const items = [];
   for(let i=hr+1;i<aoa.length;i++){
     const row = aoa[i];
     const n = String(row[cn]==null?'':row[cn]).trim();
     if(!n) continue;
     const k = String(row[ck]==null?'':row[ck]).trim();
-    items.push([n,k]);
+    const st = cs>=0 ? abNumStock(row[cs]) : null;
+    items.push(st===null ? [n,k] : [n,k,st]);
     if(limite && items.length>=limite) break;
   }
   return items;
@@ -3407,6 +3513,7 @@ async function abGuardarMaestro(items, archivo){
   abMaestroInfo = { fecha:m.fecha, archivo:m.archivo, cargadoPor:m.cargadoPor };
   abMaestroCargado = true;
   abPintarMaestro();
+  abPintarStock();
   const ok = await storageSet('abastecimiento:maestro', m, true);
   if(!ok) alert('El maestro quedó cargado en esta pantalla, pero todavía no se pudo guardar en el servidor. Se seguirá reintentando; si recargas la página antes, habrá que volver a cargarlo.');
 }
@@ -3421,9 +3528,10 @@ async function abArchivoMaestro(input){
     if(!aoa.length){ alert('El archivo está vacío.'); return; }
     const h = abEncabezadoExacto(aoa);
     if(h){
-      const items = abConstruirItems(aoa, h.hr, h.iN, h.iK, 0);
+      const items = abConstruirItems(aoa, h.hr, h.iN, h.iK, 0, h.iS);
       if(!items.length){ alert('El archivo no tiene productos debajo de los encabezados.'); return; }
-      if(!confirm('Se cargarán '+items.length.toLocaleString('es-CL')+' productos (columnas Producto y SKU) y reemplazarán al maestro actual para todo el equipo. ¿Continuar?')) return;
+      const colStock = h.iS>=0 ? 'columnas Producto, SKU y "'+String(aoa[h.hr][h.iS]).trim()+'"' : 'columnas Producto y SKU; no se encontró columna de stock, así que las filas no se pintarán';
+      if(!confirm('Se cargarán '+items.length.toLocaleString('es-CL')+' productos ('+colStock+') y reemplazarán al maestro actual para todo el equipo. ¿Continuar?')) return;
       await abGuardarMaestro(items, f.name);
       return;
     }
@@ -3458,8 +3566,9 @@ function abAbrirMapeo(aoa, archivo){
     <p class="subt">${escapeHtml(archivo)} · no se encontraron las columnas "Producto" y "SKU", elige cuáles usar.</p>
     <div class="field"><label class="field-label">Columna del producto</label><select id="ab-m-nombre" onchange="abPintarPrevia()">${opts}</select></div>
     <div class="field"><label class="field-label">Columna del SKU</label><select id="ab-m-sku" onchange="abPintarPrevia()">${opts}</select></div>
+    <div class="field"><label class="field-label">Columna del stock (para pintar las filas con stock)</label><select id="ab-m-stock" onchange="abPintarPrevia()"><option value="-1">— Sin stock —</option>${opts}</select></div>
     <div class="subt">Vista previa (así se verá en el autocompletado)</div>
-    <table class="ab-prev"><thead><tr><th>Nombre</th><th>SKU</th></tr></thead><tbody id="ab-m-prev"></tbody></table>
+    <table class="ab-prev"><thead><tr><th>Nombre</th><th>SKU</th><th>Stock</th></tr></thead><tbody id="ab-m-prev"></tbody></table>
     <div class="modal-actions">
       <button class="ghost" onclick="abMapeo=null;closeModal()">Cancelar</button>
       <button class="primary" onclick="abConfirmarMapeo()">Cargar maestro</button>
@@ -3469,16 +3578,18 @@ function abAbrirMapeo(aoa, archivo){
   const iK = abElegirCol(headers,[/^sku$/i,/sku/i,/^c[oó]digo$/i,/c[oó]digo(?!.*barra)/i,/c[oó]d/i]);
   document.getElementById('ab-m-nombre').value = String(iN>=0 ? iN : 0);
   document.getElementById('ab-m-sku').value = String(iK>=0 ? iK : (headers.length>1?1:0));
+  document.getElementById('ab-m-stock').value = String(abElegirCol(headers, AB_PATRONES_STOCK));
   abPintarPrevia();
 }
 function abItemsDelMapeo(limite){
-  return abConstruirItems(abMapeo.aoa, abMapeo.hr, +document.getElementById('ab-m-nombre').value, +document.getElementById('ab-m-sku').value, limite);
+  return abConstruirItems(abMapeo.aoa, abMapeo.hr, +document.getElementById('ab-m-nombre').value, +document.getElementById('ab-m-sku').value, limite,
+                         +document.getElementById('ab-m-stock').value);
 }
 function abPintarPrevia(){
   const it = abItemsDelMapeo(5);
   document.getElementById('ab-m-prev').innerHTML = it.length
-    ? it.map(([n,k])=>'<tr><td>'+escapeHtml(n)+'</td><td>'+escapeHtml(k)+'</td></tr>').join('')
-    : '<tr><td colspan="2">Sin datos con esta selección de columnas.</td></tr>';
+    ? it.map(([n,k,st])=>'<tr><td>'+escapeHtml(n)+'</td><td>'+escapeHtml(k)+'</td><td>'+(st==null?'—':st.toLocaleString('es-CL'))+'</td></tr>').join('')
+    : '<tr><td colspan="3">Sin datos con esta selección de columnas.</td></tr>';
 }
 async function abConfirmarMapeo(){
   const items = abItemsDelMapeo(0);
@@ -3495,12 +3606,13 @@ function abOpt(lista, val, conVacio){
          lista.map(o=>'<option value="'+escapeHtml(o)+'"'+(o===val?' selected':'')+'>'+escapeHtml(o)+'</option>').join('');
 }
 function abFilaHTML(r){
-  return '<tr data-id="'+r.id+'">'
+  const e = abEstadoStock(r), con = !!(e && e.con);
+  return '<tr data-id="'+r.id+'"'+(con?' class="ab-con-stock" title="'+escapeHtml(e.tit)+'"':'')+'>'
    + '<td><select class="ab-sel plat '+abClsPlat(r.plataforma)+'" data-f="plataforma">'+abOpt(AB_PLATAFORMAS,r.plataforma,true)+'</select></td>'
    + '<td><select class="ab-sel" data-f="envio">'+abOpt(AB_ENVIOS,r.envio,true)+'</select></td>'
    + '<td><input type="text" class="ab-inp" data-f="pedido" value="'+escapeHtml(r.pedido)+'" placeholder="N°"></td>'
    + '<td><input type="text" class="ab-inp" data-f="producto" value="'+escapeHtml(r.producto)+'" placeholder="Escribe para buscar…" autocomplete="off"></td>'
-   + '<td><div class="ab-sku"><input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">'+abBtnCopiar()+'</div></td>'
+   + '<td><div class="ab-sku"><input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">'+abBtnCopiar()+'</div><div class="ab-stock">'+(e?escapeHtml(e.txt):'')+'</div></td>'
    + '<td><input type="text" class="ab-inp num" data-f="cantidad" value="'+escapeHtml(r.cantidad)+'" placeholder="0"></td>'
    + '<td><select class="ab-sel" data-f="proveedor">'+abOpt(AB_PROVEEDORES,r.proveedor,true)+'</select></td>'
    + '<td><textarea class="ab-inp ab-obs" data-f="obs" rows="1" placeholder="Observación">'+escapeHtml(r.obs)+'</textarea></td>'
@@ -3550,6 +3662,8 @@ function renderAbastecimientoTab(c){
         <p class="subt">Productos faltantes por pedido, con el SKU completado desde el maestro de Bsale.</p>
       </div>
       <div class="ab-maestro">
+        <span id="ab-web-st"></span>
+        <button class="ghost" onclick="abCargarWeb()" title="Volver a mirar el stock en farmaciascurie.cl">Actualizar stock</button>
         <span id="ab-maestro-st"></span>
         <button class="ghost" onclick="document.getElementById('ab-file').click()">Cargar Excel maestro</button>
         <input type="file" id="ab-file" accept=".xlsx,.xls,.csv" hidden onchange="abArchivoMaestro(this)">
@@ -3565,6 +3679,7 @@ function renderAbastecimientoTab(c){
   abMontado = true;
   abPintarMaestro();
   if(!abMaestroCargado) abRecargarMaestro();
+  if(!abWebInfo.at || Date.now()-abWebInfo.at > AB_WEB_CADA_MS) abCargarWeb();
   if(AB_ARCHIVOS[abSub]) abRenderArchivo(); else abRenderPendientes();
   abActualizarConteo();
 }
@@ -3809,6 +3924,7 @@ function abOnInput(e){
     abAbrirAC(el, r.id);
   }
   if(f==='sku'){ r.skuAuto = false; abMarcar(r.id,'skuAuto'); }
+  if(f==='producto' || f==='sku') abAplicarStock(el.closest('tr'), r);
   if(f==='obs') abAutoGrow(el);
   abMarcar(r.id, f);
 }
@@ -3919,6 +4035,7 @@ function abElegirAC(i){
   const tr = abAcEl.closest('tr');
   tr.querySelector('[data-f="producto"]').value = it.n;
   tr.querySelector('[data-f="sku"]').value = it.k;
+  abAplicarStock(tr, r);
   abCerrarAC();
   tr.querySelector('[data-f="cantidad"]').focus();
 }
