@@ -794,6 +794,13 @@ function pedidosPendientesAyer(){
   });
   return porRepartidor;
 }
+// Pedidos con receta que se despacharon el día hábil anterior y quedaron sin repartidor asignado.
+function pedidosSinRepartidorAyer(){
+  const diaAnterior = diaHabilAnteriorStr();
+  return state.pedidos
+    .filter(p => !(p.repartidor||'').trim() && fechaDespachoStr(p.createdAt)===diaAnterior)
+    .sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
+}
 function estaConfirmadaRecoleccion(p){
   return !!(p.recoleccionConfirmada && p.recoleccionConfirmada.confirmado);
 }
@@ -1602,6 +1609,7 @@ function renderPedidosTab(c){
   const pendAyer = pedidosPendientesAyer();
   const repartidoresConPendiente = Object.keys(pendAyer);
   const totalRecolectar = repartidoresConPendiente.reduce((a,rep)=>a+pendAyer[rep].filter(p=>!estaConfirmadaRecoleccion(p)).length, 0);
+  const sinRepartidor = pedidosSinRepartidorAyer();
   const stickersAbiertos = state.stickers.filter(s=>!s.ok).length;
   const digitalAbiertos = state.recetasDigitales.filter(s=>!s.ok).length;
   c.innerHTML = `
@@ -1617,6 +1625,7 @@ function renderPedidosTab(c){
       <button class="subtab-btn ${pedidosSubTab==='sticker'?'active':''}" onclick="setPedidosSubTab('sticker')">Sticker${stickersAbiertos>0 ? ` <span class="subtab-badge">${stickersAbiertos}</span>` : ''}</button>
       <button class="subtab-btn ${pedidosSubTab==='digital'?'active':''}" onclick="setPedidosSubTab('digital')">Receta digitalizada${digitalAbiertos>0 ? ` <span class="subtab-badge">${digitalAbiertos}</span>` : ''}</button>
       <button class="subtab-btn ${pedidosSubTab==='repartidores'?'active':''}" onclick="setPedidosSubTab('repartidores')">${totalRecolectar>0 ? '⚠️ ' : ''}Repartidores${totalRecolectar>0 ? ` <span class="subtab-badge">${totalRecolectar}</span>` : ''}</button>
+      <button class="subtab-btn ${pedidosSubTab==='sinrepartidor'?'active':''}" onclick="setPedidosSubTab('sinrepartidor')">${sinRepartidor.length ? '⚠️ ' : ''}Sin repartidor${sinRepartidor.length ? ` <span class="subtab-badge">${sinRepartidor.length}</span>` : ''}</button>
       <button class="subtab-btn ${pedidosSubTab==='sinreceta'?'active':''}" onclick="setPedidosSubTab('sinreceta')">Pedidos Sin Receta</button>
       <button class="subtab-btn ${pedidosSubTab==='stickersinrespuesta'?'active':''}" onclick="setPedidosSubTab('stickersinrespuesta')">Stickers sin Respuesta</button>
     </div>
@@ -1631,6 +1640,7 @@ function renderPedidosTab(c){
     ` : ''}
     ${pedidosSubTab==='sticker' ? stickerSubtabHtml() : ''}
     ${pedidosSubTab==='digital' ? recetaDigitalSubtabHtml() : ''}
+    ${pedidosSubTab==='sinrepartidor' ? sinRepartidorSubtabHtml(sinRepartidor) : ''}
     ${pedidosSubTab==='sinreceta' ? sinRecetaSubtabHtml() : ''}
     ${pedidosSubTab==='stickersinrespuesta' ? stickerSinRespuestaSubtabHtml() : ''}
     ${pedidosSubTab==='repartidores' ? `
@@ -2169,6 +2179,29 @@ function recetaDigitalRowHtml(s){
       <td style="text-align:center;"><button class="confirmar-btn" onclick="marcarRecetaDigitalOk('${s.id}', true)">Dispensada Digitalmente</button></td>
       <td style="white-space:nowrap;"><button class="link" onclick="restaurarDesdeRecetaDigital('${s.id}')" title="Volver a Pedidos">↩</button> <button class="danger-link" onclick="eliminarRecetaDigital('${s.id}')">✕</button></td>
     </tr>
+  `;
+}
+function sinRepartidorSubtabHtml(lista){
+  const dia = fmtFecha(new Date(diaHabilAnteriorStr()+'T12:00:00'));
+  return `
+    <p class="subt" style="margin:2px 0 14px;">Pedidos con receta despachados el día hábil anterior (${dia}) que quedaron sin repartidor asignado. Al asignarle uno sale de esta lista y pasa al recordatorio de recolección.</p>
+    ${lista.length ? `
+      <datalist id="repartidores-datalist">${state.repartidores.map(r=>`<option value="${escapeHtml(r)}">`).join('')}</datalist>
+      <div class="recordatorio-box">
+        <div class="recordatorio-header">⚠️ ${lista.length===1 ? '1 pedido' : lista.length+' pedidos'} del ${dia} sin repartidor asignado</div>
+        <div class="recordatorio-repartidor">
+          <ul class="recordatorio-lista">
+            ${lista.map(p => `
+              <li>
+                <span class="recordatorio-pedido">#${escapeHtml(p.numero||'—')}</span>
+                <span class="recordatorio-medicamento">${escapeHtml(p.producto||'Sin producto')}</span>
+                <input type="text" list="repartidores-datalist" placeholder="Asignar repartidor" style="max-width:200px;" onchange="setPedidoRepartidor('${p.id}', this.value)">
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      </div>
+    ` : `<div class="empty-state">Todos los pedidos con receta del ${dia} tienen repartidor asignado.</div>`}
   `;
 }
 function sinRecetaSubtabHtml(){
