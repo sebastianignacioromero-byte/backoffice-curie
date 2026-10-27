@@ -1605,9 +1605,12 @@ function renderRecetasWebTab(c){
     <div class="row-between">
       <div>
         <h2 class="titulo">Recetas</h2>
-        <p class="subt">recetas.farmaciascurie.cl dentro del backoffice.</p>
+        <p class="subt">recetas.farmaciascurie.cl dentro del backoffice. Si aparece "ha rechazado la conexión", tu sesión de Cloudflare venció: toca <b>Iniciar sesión</b>, entra en la pestaña que se abre y luego vuelve aquí y toca <b>Recargar</b>.</p>
       </div>
-      <a class="ghost" href="${RECETAS_WEB_URL}" target="_blank" rel="noopener" style="text-decoration:none;">Abrir en pestaña nueva ↗</a>
+      <div style="display:flex;gap:10px;flex-shrink:0;">
+        <a class="ghost" href="${RECETAS_WEB_URL}" target="_blank" rel="noopener" style="text-decoration:none;">Iniciar sesión / abrir en pestaña nueva ↗</a>
+        <button class="ghost" onclick="document.getElementById('recetasweb-frame').src = RECETAS_WEB_URL">↻ Recargar</button>
+      </div>
     </div>
     <iframe id="recetasweb-frame" src="${RECETAS_WEB_URL}" title="Recetas" class="recetasweb-frame"></iframe>
   `;
