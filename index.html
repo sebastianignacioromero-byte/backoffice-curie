@@ -318,7 +318,24 @@
   .paso-box.pendiente .paso-label{color:rgba(255,255,255,.9);}
   .paso-box.sin_receta{border-left:4px solid #4d5a58;background:#6c7a78;}
   .paso-box.sin_receta .paso-label{color:rgba(255,255,255,.9);}
-  .pedido-footer{display:flex;align-items:center;gap:12px;justify-content:space-between;}
+  .pedido-footer{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;}
+  /* Retiro en tienda */
+  .pedido-card.retiro{border-top:4px solid var(--texto);}
+  .badge-retiro{display:inline-block;background:var(--texto);color:#fff;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;}
+  .pedido-entrega-field{display:flex;align-items:center;gap:8px;}
+  .pedido-entrega-field label{font-size:11.5px;color:var(--texto-suave);white-space:nowrap;}
+  .pedido-entrega-field select{font-size:12.5px;padding:5px 8px;width:auto;}
+  .retiro-nota{font-size:12.5px;color:var(--texto-suave);}
+  .retiro-nota b{color:var(--texto);}
+  .entrega-filtro{display:flex;align-items:center;gap:8px;margin:0 0 14px;flex-wrap:wrap;}
+  .entrega-filtro .ef-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--texto-suave);}
+  .entrega-filtro .ef-grupo{display:inline-flex;border:1px solid var(--borde);border-radius:var(--radio-chico);overflow:hidden;background:var(--panel);}
+  .entrega-filtro button{border:0;border-right:1px solid var(--borde);background:transparent;padding:6px 12px;font:inherit;font-size:12.5px;color:var(--texto-suave);cursor:pointer;}
+  .entrega-filtro button:last-child{border-right:0;}
+  .entrega-filtro button:hover{background:var(--gris-suave);color:var(--texto);}
+  .entrega-filtro button.active{background:var(--turquesa);color:#fff;}
+  .entrega-filtro button.active.retiro{background:var(--texto);}
+  .entrega-filtro .ef-count{font-weight:700;margin-left:4px;}
   .repartidor-field{display:flex;align-items:center;gap:8px;max-width:260px;}
   .repartidor-field label{font-size:11.5px;color:var(--texto-suave);white-space:nowrap;}
   .pedido-card.compacto{
@@ -783,7 +800,7 @@ function fechaDespachoStr(fechaCreacionISO){
 function pedidosPendientesAyer(){
   const diaAnterior = diaHabilAnteriorStr();
   const relevantes = state.pedidos.filter(p =>
-    p.repartidor && fechaDespachoStr(p.createdAt)===diaAnterior &&
+    !esRetiro(p) && p.repartidor && fechaDespachoStr(p.createdAt)===diaAnterior &&
     (p.validacion.estado==='timbraje' || p.validacion.estado==='retencion')
   );
   const porRepartidor = {};
@@ -800,7 +817,7 @@ function pedidosPendientesAyer(){
 function pedidosSinRepartidorAyer(){
   const diaAnterior = diaHabilAnteriorStr();
   return state.pedidos
-    .filter(p => !(p.repartidor||'').trim() && fechaDespachoStr(p.createdAt)===diaAnterior)
+    .filter(p => !esRetiro(p) && !(p.repartidor||'').trim() && fechaDespachoStr(p.createdAt)===diaAnterior)
     .sort((a,b)=> new Date(a.createdAt)-new Date(b.createdAt));
 }
 function estaConfirmadaRecoleccion(p){
@@ -862,9 +879,25 @@ function estadoPedido(p){
   if(p.tieneReceta.estado==='tiene' && p.recetaFisica.estado==='ok' && p.validacion.estado!=='pendiente') return 'listo';
   return 'proceso';
 }
+/* ====== TIPO DE ENTREGA (despacho / retiro en tienda) ======
+   Shopify manda en "entrega" el nombre del método de envío. Si contiene alguna de
+   estas palabras (sin importar mayúsculas ni tildes) el pedido se marca como retiro.
+   Si Shopify lo nombra distinto, basta con agregar la palabra aquí. */
+const ENTREGA_RETIRO_PALABRAS = ['retiro', 'retira', 'pick up', 'pickup', 'pick-up'];
+function normalizarTexto(t){
+  return (t||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+}
+function clasificarEntrega(texto){
+  const t = normalizarTexto(texto);
+  if(!t.trim()) return 'despacho';
+  return ENTREGA_RETIRO_PALABRAS.some(w => t.includes(normalizarTexto(w))) ? 'retiro' : 'despacho';
+}
+// Los pedidos antiguos no tienen el campo: cuentan como despacho.
+function esRetiro(p){ return !!p && p.entrega==='retiro'; }
+
 function nuevoPedidoBase(){
   return {
-    id:uid(), numero:'', producto:'', repartidor:'',
+    id:uid(), numero:'', producto:'', repartidor:'', entrega:'despacho', entregaShopify:'',
     tieneReceta:{estado:'pendiente', nota:''},
     recetaFisica:{estado:'pendiente', nota:''},
     validacion:{estado:'pendiente'},
@@ -886,6 +919,8 @@ async function procesarEntrantesShopify(){
     const p = nuevoPedidoBase();
     p.numero = numero;
     p.producto = (item.producto || '').toString().trim();
+    p.entregaShopify = (item.entrega || '').toString().trim();
+    p.entrega = clasificarEntrega(p.entregaShopify);
     p.tieneReceta.estado = 'tiene';
     p.tieneReceta.nota = 'Recibido automáticamente desde Shopify (tag: receta retenida)';
     p.createdBy = 'Shopify';
@@ -1624,11 +1659,33 @@ function togglePedidoExpandido(id){
 }
 let pedidosSubTab = 'pedidos';
 function setPedidosSubTab(t){ pedidosSubTab = t; render(); }
+let pedidosFiltroEntrega = 'todos';
+try{ pedidosFiltroEntrega = localStorage.getItem('curie_pedidos_filtro_entrega') || 'todos'; }catch(e){}
+function setPedidosFiltroEntrega(v){
+  pedidosFiltroEntrega = v;
+  try{ localStorage.setItem('curie_pedidos_filtro_entrega', v); }catch(e){}
+  render();
+}
+function entregaFiltroHtml(pedidos){
+  const nRet = pedidos.filter(esRetiro).length;
+  const nDes = pedidos.length - nRet;
+  const btn = (v, txt, n) => `<button class="${pedidosFiltroEntrega===v?'active':''} ${v==='retiro'?'retiro':''}" onclick="setPedidosFiltroEntrega('${v}')">${txt}<span class="ef-count">${n}</span></button>`;
+  return `
+    <div class="entrega-filtro">
+      <span class="ef-label">Entrega</span>
+      <div class="ef-grupo">
+        ${btn('todos','Todos',pedidos.length)}${btn('despacho','Despacho',nDes)}${btn('retiro','Retiro en tienda',nRet)}
+      </div>
+    </div>`;
+}
 
 function renderPedidosTab(c){
-  const ordenados = state.pedidos.slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const todosOrdenados = state.pedidos.slice().sort((a,b)=> new Date(b.createdAt)-new Date(a.createdAt));
+  const ordenados = todosOrdenados.filter(p =>
+    pedidosFiltroEntrega==='todos' || (pedidosFiltroEntrega==='retiro' ? esRetiro(p) : !esRetiro(p)));
   const enProceso = ordenados.filter(p=>estadoPedido(p)!=='listo');
   const listos = ordenados.filter(p=>estadoPedido(p)==='listo');
+  const filtroVacio = pedidosFiltroEntrega==='retiro' ? 'No hay pedidos de retiro en tienda.' : (pedidosFiltroEntrega==='despacho' ? 'No hay pedidos de despacho.' : 'No hay pedidos con receta registrados.');
   const pendAyer = pedidosPendientesAyer();
   const repartidoresConPendiente = Object.keys(pendAyer);
   const totalRecolectar = repartidoresConPendiente.reduce((a,rep)=>a+pendAyer[rep].filter(p=>!estaConfirmadaRecoleccion(p)).length, 0);
@@ -1654,7 +1711,8 @@ function renderPedidosTab(c){
     </div>
     ${pedidosSubTab==='pedidos' ? `
       <datalist id="repartidores-datalist">${state.repartidores.map(r=>`<option value="${escapeHtml(r)}">`).join('')}</datalist>
-      ${enProceso.length ? enProceso.map(p=>pedidoCardHtml(p)).join('') : (listos.length ? '' : '<div class="empty-state">No hay pedidos con receta registrados.</div>')}
+      ${entregaFiltroHtml(todosOrdenados)}
+      ${enProceso.length ? enProceso.map(p=>pedidoCardHtml(p)).join('') : (listos.length ? '' : `<div class="empty-state">${filtroVacio}</div>`)}
       ${listos.length ? `
         <h2 class="titulo" style="margin-top:26px;">Listos</h2>
         <p class="subt">${listos.length} pedidos ya validados. Toca uno para ver el detalle completo.</p>
@@ -1772,6 +1830,7 @@ function pedidoCardCompactoHtml(p){
   return `
     <div class="pedido-card compacto" onclick="togglePedidoExpandido('${p.id}')">
       <span class="pedido-num">#${escapeHtml(p.numero||'—')}</span>
+      ${esRetiro(p) ? '<span class="badge-retiro">Retiro en tienda</span>' : ''}
       <span class="pedido-prod">${escapeHtml(p.producto||'Sin producto')}</span>
       <span class="badge listo">Listo</span>
     </div>
@@ -1783,10 +1842,11 @@ function pedidoCardHtml(p){
   const clase2 = p.validacion.estado!=='pendiente' ? 'ok' : 'pendiente';
   const clase3 = p.recetaFisica.estado==='ok' ? 'ok' : (p.recetaFisica.estado==='no_fisica' ? 'sin_receta' : 'pendiente');
   return `
-    <div class="pedido-card">
+    <div class="pedido-card ${esRetiro(p) ? 'retiro' : ''}">
       <div class="pedido-header">
         <div class="pedido-nums">
           <input type="text" class="pedido-num-input" value="${escapeHtml(p.numero)}" placeholder="N° pedido" onchange="setPedidoNumero('${p.id}', this.value)">
+          ${esRetiro(p) ? '<span class="badge-retiro">Retiro en tienda</span>' : ''}
           <input type="text" class="pedido-prod-input" value="${escapeHtml(p.producto)}" placeholder="Medicamento / producto" onchange="setPedidoProducto('${p.id}', this.value)">
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -1826,12 +1886,23 @@ function pedidoCardHtml(p){
         </div>
       </div>
       <div class="pedido-footer">
-        <div class="repartidor-field">
-          <label>Repartidor:</label>
-          <input type="text" list="repartidores-datalist" value="${escapeHtml(p.repartidor)}" placeholder="Nombre del repartidor" onchange="setPedidoRepartidor('${p.id}', this.value)">
+        ${esRetiro(p) ? `
+          <div class="retiro-nota"><b>Retira en tienda:</b> no lleva repartidor</div>
+        ` : `
+          <div class="repartidor-field">
+            <label>Repartidor:</label>
+            <input type="text" list="repartidores-datalist" value="${escapeHtml(p.repartidor)}" placeholder="Nombre del repartidor" onchange="setPedidoRepartidor('${p.id}', this.value)">
+          </div>
+        `}
+        <div class="pedido-entrega-field">
+          <label>Entrega:</label>
+          <select onchange="setPedidoEntrega('${p.id}', this.value)">
+            <option value="despacho" ${!esRetiro(p)?'selected':''}>Despacho</option>
+            <option value="retiro" ${esRetiro(p)?'selected':''}>Retiro en tienda</option>
+          </select>
         </div>
         <div class="card-meta" style="margin-top:0;">
-          <span>Creado ${fmtDateShort(p.createdAt)} por ${escapeHtml(p.createdBy||'—')}</span>
+          <span>Creado ${fmtDateShort(p.createdAt)} por ${escapeHtml(p.createdBy||'—')}${p.entregaShopify ? ` · Envío en Shopify: “${escapeHtml(p.entregaShopify)}”` : ''}</span>
         </div>
       </div>
     </div>
@@ -1848,6 +1919,13 @@ function openPedidoModal(){
       <label class="field-label">Producto</label>
       <input type="text" id="pe-producto" placeholder="Ej: Clonazepam 2mg x30 comp.">
     </div>
+    <div class="field">
+      <label class="field-label">Tipo de entrega</label>
+      <select id="pe-entrega">
+        <option value="despacho">Despacho</option>
+        <option value="retiro">Retiro en tienda</option>
+      </select>
+    </div>
     <div class="modal-actions">
       <button class="ghost" onclick="closeModal()">Cancelar</button>
       <button class="primary" onclick="crearPedido()">Crear</button>
@@ -1861,6 +1939,7 @@ async function crearPedido(){
   const nuevo = nuevoPedidoBase();
   nuevo.numero = numero;
   nuevo.producto = producto;
+  nuevo.entrega = (document.getElementById('pe-entrega')||{}).value==='retiro' ? 'retiro' : 'despacho';
   nuevo.createdBy = state.whoami||'—';
   state.pedidos.unshift(nuevo);
   await storageSet('pedidos:list', state.pedidos, true);
@@ -1979,6 +2058,14 @@ async function restaurarDesdeSinReceta(id){
   await storageSet('pedidos:list', state.pedidos, true);
   await storageSet('pedidossinreceta:list', state.pedidosSinReceta, true);
   pedidosSubTab = 'pedidos';
+  render();
+}
+async function setPedidoEntrega(id, valor){
+  const p = state.pedidos.find(x=>x.id===id);
+  if(!p) return;
+  p.entrega = valor==='retiro' ? 'retiro' : 'despacho';
+  p.updatedAt = new Date().toISOString();
+  await storageSet('pedidos:list', state.pedidos, true);
   render();
 }
 async function setPedidoRepartidor(id, valor){
