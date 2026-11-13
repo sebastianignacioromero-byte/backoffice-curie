@@ -897,7 +897,7 @@ function esRetiro(p){ return !!p && p.entrega==='retiro'; }
 
 function nuevoPedidoBase(){
   return {
-    id:uid(), numero:'', producto:'', repartidor:'', entrega:'despacho', entregaShopify:'',
+    id:uid(), numero:'', producto:'', repartidor:'', entrega:'despacho', entregaShopify:'', telefono:'',
     tieneReceta:{estado:'pendiente', nota:''},
     recetaFisica:{estado:'pendiente', nota:''},
     validacion:{estado:'pendiente'},
@@ -921,6 +921,9 @@ async function procesarEntrantesShopify(){
     p.producto = (item.producto || '').toString().trim();
     p.entregaShopify = (item.entrega || '').toString().trim();
     p.entrega = clasificarEntrega(p.entregaShopify);
+    // Teléfono de contacto: primero el de la dirección de envío y, si viene vacío, el del pedido.
+    // No se muestra en la tarjeta; se usa para completar el Sticker al pasar a "Envío a región".
+    p.telefono = ((item.telefono_envio || '').toString().trim() || (item.telefono || '').toString().trim());
     p.tieneReceta.estado = 'tiene';
     p.tieneReceta.nota = 'Recibido automáticamente desde Shopify (tag: receta retenida)';
     p.createdBy = 'Shopify';
@@ -1981,7 +1984,7 @@ async function setTieneRecetaEstado(id, valor){
 }
 async function moverPedidoASticker(p){
   state.stickers.unshift({
-    id:uid(), numero:p.numero, medicamento:p.producto, telefono:'', ok:false,
+    id:uid(), numero:p.numero, medicamento:p.producto, telefono:(p.telefono||''), ok:false,
     createdAt:new Date().toISOString(), createdBy: state.whoami||'—',
     completedAt:null, completedBy:null
   });
@@ -2028,6 +2031,7 @@ async function restaurarDesdeSticker(id){
   const p = nuevoPedidoBase();
   p.numero = s.numero;
   p.producto = s.medicamento;
+  p.telefono = s.telefono || '';
   state.pedidos.unshift(p);
   state.stickers = state.stickers.filter(x=>x.id!==id);
   await storageSet('pedidos:list', state.pedidos, true);
