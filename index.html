@@ -694,6 +694,10 @@
   .ab-copy{background:none;border:none;color:var(--texto-suave);cursor:pointer;padding:5px;border-radius:var(--radio-chico);line-height:0;flex:none;}
   .ab-copy:hover{color:var(--turquesa);background:var(--turquesa-suave);}
   .ab-copy.ok{color:var(--turquesa);}
+  .tel-copiar{display:flex;align-items:center;gap:4px;}
+  .tel-copiar input{flex:0 1 150px;min-width:0;}
+  .tel-copiar-inline{display:inline-flex;align-items:center;gap:2px;}
+  .tel-copiar-inline .ab-copy{padding:3px;}
   .ab-tabla td.ab-txt{padding:9px 8px;}
   .ab-tabla td.ab-txt .ab-sku{justify-content:flex-end;}
   .ab-meta{font-size:11.5px;color:var(--texto-suave);}
@@ -2120,7 +2124,7 @@ function stickerSubtabHtml(){
           <tr>
             <td>${escapeHtml(s.numero)}</td>
             <td>${escapeHtml(s.medicamento)}</td>
-            <td>${escapeHtml(s.telefono)}</td>
+            <td>${telConCopiarHtml(s.telefono)}</td>
             <td>${escapeHtml(s.completedBy||'—')} · ${fmtDateShort(s.completedAt)}</td>
             <td><button class="link" onclick="reabrirSticker('${s.id}')">Reabrir</button></td>
           </tr>
@@ -2134,7 +2138,7 @@ function stickerRowHtml(s){
     <tr>
       <td><input type="text" value="${escapeHtml(s.numero)}" placeholder="N°" onchange="setStickerField('${s.id}','numero',this.value)"></td>
       <td><input type="text" value="${escapeHtml(s.medicamento)}" placeholder="Medicamento" onchange="setStickerField('${s.id}','medicamento',this.value)"></td>
-      <td><input type="text" value="${escapeHtml(s.telefono)}" placeholder="Teléfono" onchange="setStickerField('${s.id}','telefono',this.value)"></td>
+      <td><div class="tel-copiar"><input type="text" value="${escapeHtml(s.telefono)}" placeholder="Teléfono" onchange="setStickerField('${s.id}','telefono',this.value)">${telBtnCopiar(s.telefono)}</div></td>
       <td style="text-align:center;"><button class="confirmar-btn" onclick="marcarStickerOk('${s.id}', true)">Sticker OK</button></td>
       <td style="white-space:nowrap;"><button class="link" onclick="restaurarDesdeSticker('${s.id}')" title="Volver a Pedidos">↩</button> <button class="danger-link" onclick="moverStickerSinRespuesta('${s.id}')" title="Mover a Stickers sin Respuesta">✕</button></td>
     </tr>
@@ -2338,7 +2342,7 @@ function stickerSinRespuestaSubtabHtml(){
     ${lista.length ? lista.map(s => `
       <div class="pedido-card compacto" style="cursor:default;">
         <span class="pedido-num">#${escapeHtml(s.numero||'—')}</span>
-        <span class="pedido-prod">${escapeHtml(s.medicamento||'Sin medicamento')}${s.telefono ? ' · '+escapeHtml(s.telefono) : ''}</span>
+        <span class="pedido-prod">${escapeHtml(s.medicamento||'Sin medicamento')}${s.telefono ? ' · '+telConCopiarHtml(s.telefono) : ''}</span>
         <button class="link" onclick="restaurarDesdeStickerSinRespuesta('${s.id}')">↩ Deshacer</button>
       </div>
     `).join('') : '<div class="empty-state">No hay stickers sin respuesta.</div>'}
@@ -3905,8 +3909,22 @@ async function abCopiar(btn, texto){
     t.value = texto; t.style.position = 'fixed'; t.style.opacity = '0';
     document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove();
   }
+  const tituloOriginal = btn.dataset.titulo || btn.title || 'Copiar';
+  btn.dataset.titulo = tituloOriginal;
   btn.innerHTML = AB_ICONO_OK; btn.classList.add('ok'); btn.title = 'Copiado';
-  setTimeout(()=>{ btn.innerHTML = AB_ICONO_COPIAR; btn.classList.remove('ok'); btn.title = 'Copiar SKU'; }, 1200);
+  setTimeout(()=>{ btn.innerHTML = AB_ICONO_COPIAR; btn.classList.remove('ok'); btn.title = tituloOriginal; }, 1200);
+}
+/* Botón copiar teléfono (Sticker y Stickers sin Respuesta) */
+function telBtnCopiar(telefono){
+  return `<button type="button" class="ab-copy" title="Copiar teléfono" onclick="copiarTelefono(this)" data-tel="${escapeHtml(telefono||'')}">${AB_ICONO_COPIAR}</button>`;
+}
+function copiarTelefono(btn){
+  // En las filas editables se copia lo que esté escrito en ese momento en el campo.
+  const input = btn.parentElement && btn.parentElement.querySelector('input');
+  abCopiar(btn, input ? input.value : btn.dataset.tel);
+}
+function telConCopiarHtml(telefono){
+  return telefono ? `<span class="tel-copiar-inline">${escapeHtml(telefono)}${telBtnCopiar(telefono)}</span>` : '';
 }
 
 /* Resueltos y Rechazados: se guardan por mes en 'abastecimiento:resueltos:YYYY-MM' y
