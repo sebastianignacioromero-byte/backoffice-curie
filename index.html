@@ -659,6 +659,13 @@
   .ab-tabla thead th.num{text-align:right;}
   .ab-tabla tbody td{padding:5px 6px;border-bottom:1px solid var(--borde);vertical-align:top;}
   .ab-tabla tbody tr:nth-child(even) td{background:#f6faf9;}
+  .ab-tabla tbody tr.ab-dia td{background:var(--turquesa-suave);border-top:1px solid var(--turquesa-suave2);border-bottom:1px solid var(--turquesa-suave2);padding:8px 10px;}
+  .ab-dia-fila{display:flex;align-items:center;gap:10px;}
+  .ab-dia-titulo{font-weight:700;font-size:13.5px;color:var(--turquesa-osc);}
+  .ab-dia-titulo::first-letter{text-transform:uppercase;}
+  .ab-dia-rel{font-size:12px;color:var(--turquesa-med);font-weight:600;}
+  .ab-dia-cant{margin-left:auto;font-size:12px;font-weight:700;color:var(--turquesa-osc);background:#fff;border:1px solid var(--turquesa-suave2);border-radius:999px;padding:2px 10px;}
+  .ab-hora{font-weight:600;}
   .ab-tabla td.ab-vacio{text-align:center;color:var(--texto-suave);padding:34px 10px;background:#fff;}
   .ab-tabla .ab-inp,.ab-tabla .ab-sel{width:100%;border:1px solid transparent;background:transparent;border-radius:var(--radio-chico);
     padding:7px 8px;font:inherit;color:var(--texto);box-shadow:none;margin:0;}
@@ -4014,7 +4021,7 @@ function abRenderArchivo(){
       <table class="ab-tabla">
         <thead><tr>
           <th style="width:88px;">Agregado</th>
-          <th style="width:120px;">${a.col}</th>
+          <th style="width:120px;">Hora</th>
           <th style="width:95px;">Plataforma</th>
           <th style="width:100px;">Envío / Retiro</th>
           <th style="width:90px;">N° de pedido</th>
@@ -4064,9 +4071,22 @@ function abPintarArchivo(msg){
     tb.innerHTML = '<tr><td class="ab-vacio" colspan="11">'+escapeHtml(msg || 'No hay productos '+a.plural+' en este mes.')+'</td></tr>';
     return;
   }
-  tb.innerHTML = rows.map(r=>'<tr>'
+  // En pantalla: los más recientes arriba, agrupados por el día en que se resolvieron/rechazaron.
+  // (La exportación a Excel mantiene su orden por fecha de agregado.)
+  const porFecha = rows.slice().sort((x,y)=>String(y[a.at]||'').localeCompare(String(x[a.at]||'')));
+  const grupos = [];
+  porFecha.forEach(r=>{
+    const dia = r[a.at] ? fmtISODate(new Date(r[a.at])) : '';
+    let g = grupos[grupos.length-1];
+    if(!g || g.dia!==dia){ g = {dia, filas:[]}; grupos.push(g); }
+    g.filas.push(r);
+  });
+  const hoy = todayStr();
+  const ayerD = new Date(); ayerD.setDate(ayerD.getDate()-1);
+  const ayer = fmtISODate(ayerD);
+  const fila = r=>'<tr>'
     + '<td class="ab-txt">'+abFechaCorta(r.creadoAt)+'</td>'
-    + '<td class="ab-txt">'+abFechaCorta(r[a.at])+'<div class="ab-meta">'+escapeHtml(r[a.por]||'')+'</div></td>'
+    + '<td class="ab-txt"><span class="ab-hora">'+abHora(r[a.at])+'</span><div class="ab-meta">'+escapeHtml(r[a.por]||'')+'</div></td>'
     + '<td class="ab-txt"><b style="color:'+abColorPlat(r.plataforma)+'">'+escapeHtml(r.plataforma)+'</b></td>'
     + '<td class="ab-txt">'+escapeHtml(r.envio)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.pedido)+'</td>'
@@ -4076,7 +4096,24 @@ function abPintarArchivo(msg){
     + '<td class="ab-txt">'+escapeHtml(r.proveedor)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.obs)+'</td>'
     + '<td><button class="ab-x" data-act="volver" data-id="'+r.id+'" title="Devolver a Pendientes">↩</button></td>'
-    + '</tr>').join('');
+    + '</tr>';
+  tb.innerHTML = grupos.map(g=>{
+    const titulo = g.dia ? fmtFecha(new Date(g.dia+'T12:00:00')) : 'Sin fecha';
+    const rel = g.dia===hoy ? 'Hoy' : (g.dia===ayer ? 'Ayer' : '');
+    const n = g.filas.length;
+    return '<tr class="ab-dia"><td colspan="11"><div class="ab-dia-fila">'
+      + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--turquesa-osc)" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>'
+      + '<span class="ab-dia-titulo">'+escapeHtml(titulo)+'</span>'
+      + (rel ? '<span class="ab-dia-rel">'+rel+'</span>' : '')
+      + '<span class="ab-dia-cant">'+n+' '+(n===1 ? 'producto' : 'productos')+'</span>'
+      + '</div></td></tr>'
+      + g.filas.map(fila).join('');
+  }).join('');
+}
+function abHora(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
 async function abExportarMes(){
   const a = AB_ARCHIVOS[abSub];
