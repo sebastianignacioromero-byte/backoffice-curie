@@ -9,11 +9,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --turquesa:#0b6f68;
-    --turquesa-osc:#074c47;
-    --turquesa-med:#0e8377;
-    --turquesa-suave:#e7f2f1;
-    --turquesa-suave2:#d6ece9;
+    --turquesa:#12a5b3;
+    --turquesa-osc:#0b7a85;
+    --turquesa-med:#1cb5c3;
+    --turquesa-suave:#e5f6f8;
+    --turquesa-suave2:#c8ebf0;
+    /* Retiro en tienda (gris grafito) */
+    --retiro:#3d4847;
+    --retiro-osc:#2b3433;
+    --retiro-suave:#f4f5f5;
+    --retiro-borde:#d3d9d8;
     --naranjo:#ef6c00;
     --naranjo-osc:#c85700;
     --naranjo-suave:#fdece0;
@@ -222,7 +227,7 @@
     background:var(--turquesa);color:#fff;border:none;
     padding:9px 18px;border-radius:var(--radio-chico);font-size:13px;font-weight:600;
     cursor:pointer;font-family:inherit;
-    box-shadow:0 2px 6px rgba(11,111,104,.28);
+    box-shadow:0 2px 6px rgba(18,165,179,.28);
     transition:background .12s ease,transform .08s ease;
   }
   button.primary:hover{background:var(--turquesa-osc);transform:translateY(-1px);}
@@ -320,13 +325,20 @@
   .paso-box.sin_receta .paso-label{color:rgba(255,255,255,.9);}
   .pedido-footer{display:flex;align-items:center;gap:12px;justify-content:space-between;flex-wrap:wrap;}
   /* Retiro en tienda */
-  .pedido-card.retiro{border-top:4px solid var(--texto);}
-  .badge-retiro{display:inline-block;background:var(--texto);color:#fff;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;}
+  .pedido-card.retiro{background:var(--retiro-suave);border:2px solid var(--retiro);box-shadow:0 2px 10px rgba(30,40,40,.12);overflow:hidden;}
+  .pedido-card.retiro .pedido-num-input{color:var(--retiro-osc);}
+  .retiro-banda{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+    margin:-15px -17px 13px;padding:9px 17px;background:var(--retiro);color:#fff;}
+  .retiro-banda-titulo{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}
+  .retiro-banda-titulo .sucursal{font-weight:500;text-transform:none;letter-spacing:0;}
+  .retiro-banda-chip{font-size:11.5px;background:rgba(255,255,255,.16);border-radius:999px;padding:3px 10px;white-space:nowrap;}
+  .pedido-card.compacto.retiro{border:1px solid var(--retiro-borde);border-left:6px solid var(--retiro);box-shadow:none;}
+  .pedido-card.compacto.retiro:hover{background:#eceeee;}
+  .badge-retiro{display:inline-flex;align-items:center;gap:5px;background:var(--retiro);color:#fff;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:3px 8px;border-radius:999px;white-space:nowrap;}
   .pedido-entrega-field{display:flex;align-items:center;gap:8px;}
   .pedido-entrega-field label{font-size:11.5px;color:var(--texto-suave);white-space:nowrap;}
   .pedido-entrega-field select{font-size:12.5px;padding:5px 8px;width:auto;}
-  .retiro-nota{font-size:12.5px;color:var(--texto-suave);}
-  .retiro-nota b{color:var(--texto);}
+  .retiro-nota{font-size:12.5px;color:var(--retiro-osc);font-weight:600;}
   .entrega-filtro{display:flex;align-items:center;gap:8px;margin:0 0 14px;flex-wrap:wrap;}
   .entrega-filtro .ef-label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--texto-suave);}
   .entrega-filtro .ef-grupo{display:inline-flex;border:1px solid var(--borde);border-radius:var(--radio-chico);overflow:hidden;background:var(--panel);}
@@ -334,7 +346,8 @@
   .entrega-filtro button:last-child{border-right:0;}
   .entrega-filtro button:hover{background:var(--gris-suave);color:var(--texto);}
   .entrega-filtro button.active{background:var(--turquesa);color:#fff;}
-  .entrega-filtro button.active.retiro{background:var(--texto);}
+  .entrega-filtro button.active.retiro{background:var(--retiro);}
+  .entrega-filtro button svg{vertical-align:-3px;margin-right:4px;}
   .entrega-filtro .ef-count{font-weight:700;margin-left:4px;}
   .repartidor-field{display:flex;align-items:center;gap:8px;max-width:260px;}
   .repartidor-field label{font-size:11.5px;color:var(--texto-suave);white-space:nowrap;}
@@ -658,7 +671,7 @@
     padding:10px 8px;border-bottom:2px solid var(--turquesa);background:var(--panel);vertical-align:bottom;}
   .ab-tabla thead th.num{text-align:right;}
   .ab-tabla tbody td{padding:5px 6px;border-bottom:1px solid var(--borde);vertical-align:top;}
-  .ab-tabla tbody tr:nth-child(even) td{background:#f6faf9;}
+  .ab-tabla tbody tr:nth-child(even) td{background:#f4fafb;}
   .ab-tabla tbody tr.ab-dia td{background:var(--turquesa-suave);border-top:1px solid var(--turquesa-suave2);border-bottom:1px solid var(--turquesa-suave2);padding:8px 10px;}
   .ab-dia-fila{display:flex;align-items:center;gap:10px;}
   .ab-dia-titulo{font-weight:700;font-size:13.5px;color:var(--turquesa-osc);}
@@ -894,7 +907,16 @@ function estadoPedido(p){
    Shopify manda en "entrega" el nombre del método de envío. Si contiene alguna de
    estas palabras (sin importar mayúsculas ni tildes) el pedido se marca como retiro.
    Si Shopify lo nombra distinto, basta con agregar la palabra aquí. */
-const ENTREGA_RETIRO_PALABRAS = ['retiro', 'retira', 'pick up', 'pickup', 'pick-up'];
+const ENTREGA_RETIRO_PALABRAS = ['retiro', 'retira', 'sucursal', 'pick up', 'pickup', 'pick-up'];
+const ICONO_TIENDA = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l1.5-5h15L21 9"/><path d="M4 9v11h16V9"/><path d="M3 9h18"/><path d="M10 20v-6h4v6"/></svg>';
+// Nombre de la sucursal tal como lo manda Shopify (ej. "SUCURSAL PROVIDENCIA" -> "Sucursal Providencia").
+// Vacío si no vino o si es un texto genérico como "Retiro en tienda".
+function sucursalRetiro(p){
+  const t = (p && p.entregaShopify || '').trim();
+  if(!t || /^(retiro|retira)( en)?( (la )?tienda)?$/.test(normalizarTexto(t))) return '';
+  return t.toLowerCase().replace(/(^|[\s\-\/(])([a-záéíóúñü])/g, (m,a,b)=>a+b.toUpperCase());
+}
+function sucursalCorta(p){ return sucursalRetiro(p).replace(/^sucursal\s+/i,''); }
 function normalizarTexto(t){
   return (t||'').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
@@ -1688,7 +1710,7 @@ function entregaFiltroHtml(pedidos){
     <div class="entrega-filtro">
       <span class="ef-label">Entrega</span>
       <div class="ef-grupo">
-        ${btn('todos','Todos',pedidos.length)}${btn('despacho','Despacho',nDes)}${btn('retiro','Retiro en tienda',nRet)}
+        ${btn('todos','Todos',pedidos.length)}${btn('despacho','Despacho',nDes)}${btn('retiro',ICONO_TIENDA+'Retiro en tienda',nRet)}
       </div>
     </div>`;
 }
@@ -1842,9 +1864,9 @@ async function guardarFeriados(){
 }
 function pedidoCardCompactoHtml(p){
   return `
-    <div class="pedido-card compacto" onclick="togglePedidoExpandido('${p.id}')">
+    <div class="pedido-card compacto ${esRetiro(p) ? 'retiro' : ''}" onclick="togglePedidoExpandido('${p.id}')">
       <span class="pedido-num">#${escapeHtml(p.numero||'—')}</span>
-      ${esRetiro(p) ? '<span class="badge-retiro">Retiro en tienda</span>' : ''}
+      ${esRetiro(p) ? `<span class="badge-retiro">Retiro${sucursalCorta(p) ? ' · '+escapeHtml(sucursalCorta(p)) : ' en tienda'}</span>` : ''}
       <span class="pedido-prod">${escapeHtml(p.producto||'Sin producto')}</span>
       <span class="badge listo">Listo</span>
     </div>
@@ -1857,10 +1879,15 @@ function pedidoCardHtml(p){
   const clase3 = p.recetaFisica.estado==='ok' ? 'ok' : (p.recetaFisica.estado==='no_fisica' ? 'sin_receta' : 'pendiente');
   return `
     <div class="pedido-card ${esRetiro(p) ? 'retiro' : ''}">
+      ${esRetiro(p) ? `
+        <div class="retiro-banda">
+          <div class="retiro-banda-titulo">${ICONO_TIENDA}Retiro en tienda${sucursalRetiro(p) ? ` <span class="sucursal">· ${escapeHtml(sucursalRetiro(p))}</span>` : ''}</div>
+          <span class="retiro-banda-chip">No lleva repartidor</span>
+        </div>
+      ` : ''}
       <div class="pedido-header">
         <div class="pedido-nums">
           <input type="text" class="pedido-num-input" value="${escapeHtml(p.numero)}" placeholder="N° pedido" onchange="setPedidoNumero('${p.id}', this.value)">
-          ${esRetiro(p) ? '<span class="badge-retiro">Retiro en tienda</span>' : ''}
           <input type="text" class="pedido-prod-input" value="${escapeHtml(p.producto)}" placeholder="Medicamento / producto" onchange="setPedidoProducto('${p.id}', this.value)">
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
@@ -1901,7 +1928,7 @@ function pedidoCardHtml(p){
       </div>
       <div class="pedido-footer">
         ${esRetiro(p) ? `
-          <div class="retiro-nota"><b>Retira en tienda:</b> no lleva repartidor</div>
+          <div class="retiro-nota">${sucursalRetiro(p) ? 'El cliente retira en '+escapeHtml(sucursalRetiro(p)) : 'El cliente retira en tienda'}</div>
         ` : `
           <div class="repartidor-field">
             <label>Repartidor:</label>
@@ -3154,9 +3181,9 @@ function rmCssVar(name, fallback){
 }
 
 function rmUpdateCharts(pRei,pEpr,pInc,pOk, rRei,rPer,rEmed,rInc,rOk){
-  const turquesa = rmCssVar('--turquesa','#0b6f68');
+  const turquesa = rmCssVar('--turquesa','#12a5b3');
   const naranjo = rmCssVar('--naranjo','#ef6c00');
-  const turquesaOsc = rmCssVar('--turquesa-osc','#074c47');
+  const turquesaOsc = rmCssVar('--turquesa-osc','#0b7a85');
 
   const elP = document.getElementById('rm_chartPropios');
   if(elP){
@@ -3249,7 +3276,7 @@ async function rmActualizarTendencia(){
     )).join('');
   }
 
-  const turquesa = rmCssVar('--turquesa','#0b6f68');
+  const turquesa = rmCssVar('--turquesa','#12a5b3');
   const naranjo = rmCssVar('--naranjo','#ef6c00');
   const labels = filas.map(f => rmMesLegible(f.mes));
 
@@ -3259,7 +3286,7 @@ async function rmActualizarTendencia(){
     rmChartTrend1 = new Chart(elT1, {
       type: 'line',
       data: { labels, datasets: [
-        { label: 'Error propios %', data: filas.map(f=>f.pErrPct.toFixed(1)), borderColor: turquesa, backgroundColor: 'rgba(11,111,104,0.12)', tension: 0.3, fill: true },
+        { label: 'Error propios %', data: filas.map(f=>f.pErrPct.toFixed(1)), borderColor: turquesa, backgroundColor: 'rgba(18,165,179,0.12)', tension: 0.3, fill: true },
         { label: 'Error regi\u00f3n %', data: filas.map(f=>f.rErrPct.toFixed(1)), borderColor: naranjo, backgroundColor: 'rgba(239,108,0,0.12)', tension: 0.3, fill: true, borderDash: [4,3] },
       ]},
       options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { labels: { font: { size: 11 } } } } }
