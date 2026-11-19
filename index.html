@@ -3809,6 +3809,7 @@ function abOpt(lista, val, conVacio){
 function abFilaHTML(r){
   const e = abEstadoStock(r), con = !!(e && e.con);
   return '<tr data-id="'+r.id+'"'+(con?' class="ab-con-stock"':'')+'>'
+   + '<td class="ab-txt">'+abAgregadoHTML(r)+'</td>'
    + '<td><select class="ab-sel plat '+abClsPlat(r.plataforma)+'" data-f="plataforma">'+abOpt(AB_PLATAFORMAS,r.plataforma,true)+'</select></td>'
    + '<td><select class="ab-sel" data-f="envio">'+abOpt(AB_ENVIOS,r.envio,true)+'</select></td>'
    + '<td><input type="text" class="ab-inp" data-f="pedido" value="'+escapeHtml(r.pedido)+'" placeholder="N°"></td>'
@@ -3838,7 +3839,7 @@ function abPintarFilas(){
   const rows = state.abastecimiento.filter(r=>!abArchivoDe(r.estado));
   tb.innerHTML = rows.length
     ? rows.map(abFilaHTML).join('')
-    : '<tr><td class="ab-vacio" colspan="11">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
+    : '<tr><td class="ab-vacio" colspan="12">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
   tb.querySelectorAll('textarea.ab-obs').forEach(abAutoGrow);
   abActualizarConteo();
 }
@@ -3901,6 +3902,7 @@ function abRenderPendientes(){
     <div class="tabla-wrap">
       <table class="ab-tabla">
         <thead><tr>
+          <th style="width:100px;">Agregado</th>
           <th style="width:95px;">Plataforma</th>
           <th style="width:115px;">Envío / Retiro</th>
           <th style="width:100px;">N° de pedido</th>
@@ -4112,7 +4114,7 @@ function abPintarArchivo(msg){
   const ayerD = new Date(); ayerD.setDate(ayerD.getDate()-1);
   const ayer = fmtISODate(ayerD);
   const fila = r=>'<tr>'
-    + '<td class="ab-txt">'+abFechaCorta(r.creadoAt)+'</td>'
+    + '<td class="ab-txt">'+abAgregadoHTML(r)+'</td>'
     + '<td class="ab-txt"><span class="ab-hora">'+abHora(r[a.at])+'</span><div class="ab-meta">'+escapeHtml(r[a.por]||'')+'</div></td>'
     + '<td class="ab-txt"><b style="color:'+abColorPlat(r.plataforma)+'">'+escapeHtml(r.plataforma)+'</b></td>'
     + '<td class="ab-txt">'+escapeHtml(r.envio)+'</td>'
@@ -4137,6 +4139,16 @@ function abPintarArchivo(msg){
       + g.filas.map(fila).join('');
   }).join('');
 }
+// "Agregado": fecha y hora en que se anotó el producto, y quién lo anotó.
+function abAgregadoHTML(r){
+  if(!r || !r.creadoAt) return '<span class="ab-meta">—</span>';
+  const d = new Date(r.creadoAt);
+  const fecha = String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+  const por = r.creadoPor && r.creadoPor!=='—' ? r.creadoPor : '';
+  return '<span class="ab-hora">'+fecha+' '+abHora(r.creadoAt)+'</span>'
+    + (por ? '<div class="ab-meta">'+escapeHtml(por)+'</div>' : '');
+}
+function abFechaHora(iso){ return iso ? abFechaCorta(iso)+' '+abHora(iso) : ''; }
 function abHora(iso){
   if(!iso) return '—';
   const d = new Date(iso);
@@ -4146,10 +4158,10 @@ async function abExportarMes(){
   const a = AB_ARCHIVOS[abSub];
   if(!a) return;
   try{ await abCargarXLSX(); }catch(err){ alert(err.message); return; }
-  const data = [['Fecha agregado','Fecha '+a.col.toLowerCase(),a.col+' por','Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento']];
-  abArchivoOrdenado().forEach(r=>data.push([abFechaCorta(r.creadoAt),abFechaCorta(r[a.at]),r[a.por]||'',r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs]));
+  const data = [['Fecha agregado','Agregado por','Fecha '+a.col.toLowerCase(),a.col+' por','Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento']];
+  abArchivoOrdenado().forEach(r=>data.push([abFechaHora(r.creadoAt),(r.creadoPor&&r.creadoPor!=='—')?r.creadoPor:'',abFechaHora(r[a.at]),r[a.por]||'',r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs]));
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:12},{wch:14},{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50}];
+  ws['!cols'] = [{wch:16},{wch:14},{wch:16},{wch:14},{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, a.titulo+' '+abResMes);
   XLSX.writeFile(wb, 'abastecimiento_'+abSub+'_'+abResMes+'.xlsx');
@@ -4301,10 +4313,10 @@ function abOnKeydown(e){
 /* Exportar */
 async function abExportar(){
   try{ await abCargarXLSX(); }catch(err){ alert(err.message); return; }
-  const data = [['Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento','Estado']];
-  state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).forEach(r=>data.push([r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs,r.estado]));
+  const data = [['Agregado','Agregado por','Plataforma','Envío / Retiro','N° de pedido','Nombre producto faltante','SKU','Cantidad necesaria','Proveedor','Observación abastecimiento','Estado']];
+  state.abastecimiento.filter(r=>!abArchivoDe(r.estado)).forEach(r=>data.push([abFechaHora(r.creadoAt),(r.creadoPor&&r.creadoPor!=='—')?r.creadoPor:'',r.plataforma,r.envio,r.pedido,r.producto,r.sku,r.cantidad,r.proveedor,r.obs,r.estado]));
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50},{wch:11}];
+  ws['!cols'] = [{wch:16},{wch:14},{wch:11},{wch:14},{wch:14},{wch:44},{wch:16},{wch:10},{wch:12},{wch:50},{wch:11}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Abastecimiento');
   XLSX.writeFile(wb, 'abastecimiento_'+todayStr()+'.xlsx');
