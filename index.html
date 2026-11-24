@@ -666,7 +666,7 @@
   .ab-toolbar select,.ab-toolbar input[type=month]{width:auto;margin:0;}
   .ab-conteo{font-size:12.5px;color:var(--texto-suave);}
   .ab-conteo b{color:var(--texto);}
-  .ab-tabla{width:100%;min-width:1200px;table-layout:fixed;border-collapse:collapse;font-size:13px;background:var(--panel);border-radius:var(--radio);overflow:hidden;box-shadow:var(--sombra-chica);}
+  .ab-tabla{width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;background:var(--panel);border-radius:var(--radio);overflow:hidden;box-shadow:var(--sombra-chica);}
   .ab-tabla thead th{text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--texto-suave);
     padding:10px 8px;border-bottom:2px solid var(--turquesa);background:var(--panel);vertical-align:bottom;}
   .ab-tabla thead th.num{text-align:right;}
@@ -734,6 +734,44 @@
   .ab-pill.ok{background:#e8f6ee;color:#1e7a46;border-color:#bfe5cf;}
   .ab-pill.nd{background:transparent;color:var(--texto-suave);font-weight:500;padding-left:4px;padding-right:4px;}
   .ab-pill.cargando{background:transparent;color:var(--texto-suave);font-weight:500;}
+  /* SKU y fecha "Agregado" plegados: columna angosta con botón copiar / ícono, se despliegan por fila o desde el encabezado */
+  .ab-tabla{min-width:960px;}
+  .ab-th-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:4px;font:inherit;color:inherit;text-transform:inherit;
+    letter-spacing:inherit;padding:2px 4px;border-radius:5px;white-space:nowrap;}
+  .ab-th-btn:hover{color:var(--turquesa);background:var(--turquesa-suave);}
+  .ab-th-btn svg,.ab-chev svg{transition:transform .15s;}
+  .ab-tabla th.ab-c-sku{width:66px;text-align:center;}
+  .ab-tabla.sku-ab th.ab-c-sku{width:162px;text-align:right;}
+  .ab-tabla.sku-ab th.ab-c-sku .ab-th-btn svg{transform:rotate(-90deg);}
+  .ab-sku-cerr{display:flex;align-items:center;justify-content:center;}
+  .ab-sku-ab{display:none;}
+  .ab-tabla.sku-ab .ab-sku-cerr,.ab-tabla td.ab-c-sku.abierto .ab-sku-cerr{display:none;}
+  .ab-tabla.sku-ab .ab-sku-ab,.ab-tabla td.ab-c-sku.abierto .ab-sku-ab{display:flex;}
+  .ab-tabla td.ab-c-sku{position:relative;}
+  .ab-tabla td.ab-txt.ab-c-sku{padding-left:4px;padding-right:4px;}
+  .ab-tabla .ab-sku-ab span{flex:1;text-align:right;font-variant-numeric:tabular-nums;}
+  .ab-tabla:not(.sku-ab) td.ab-c-sku.abierto .ab-sku-ab{position:absolute;z-index:5;right:4px;top:3px;width:172px;background:#fff;
+    border:1px solid var(--turquesa);border-radius:8px;padding:2px 2px 2px 6px;box-shadow:0 4px 12px rgba(15,45,42,.14);}
+  .ab-chev{background:none;border:none;color:var(--texto-suave);cursor:pointer;padding:5px 3px;border-radius:var(--radio-chico);line-height:0;flex:none;}
+  .ab-chev:hover{color:var(--turquesa);background:var(--turquesa-suave);}
+  .ab-tabla th.ab-c-ag{width:72px;text-align:center;}
+  .ab-tabla.ag-ab th.ab-c-ag{width:100px;text-align:left;}
+  .ab-tabla.ag-ab th.ab-c-ag .ab-th-btn svg{transform:rotate(-90deg);}
+  .ab-tabla td.ab-c-ag{text-align:center;position:relative;}
+  .ab-cal{background:none;border:none;color:var(--texto-suave);cursor:pointer;padding:4px 5px;border-radius:var(--radio-chico);display:inline-flex;gap:2px;align-items:center;}
+  .ab-cal:hover{color:var(--turquesa);background:var(--turquesa-suave);}
+  .ab-ag-txt{display:none;}
+  .ab-tabla.ag-ab td.ab-c-ag{text-align:left;}
+  .ab-tabla.ag-ab .ab-cal{display:none;}
+  .ab-tabla.ag-ab .ab-ag-txt{display:block;}
+  .ab-tabla:not(.ag-ab) td.ab-c-ag.abierto .ab-ag-txt{display:block;position:absolute;z-index:5;left:52px;top:4px;background:#fff;border:1px solid var(--turquesa);
+    border-radius:8px;padding:6px 10px;white-space:nowrap;box-shadow:0 4px 12px rgba(15,45,42,.14);font-size:12.5px;}
+  /* El nombre del producto es lo más importante: en negrita y baja de línea en vez de cortarse */
+  .ab-tabla textarea.ab-prod{resize:none;overflow:hidden;min-height:34px;line-height:1.35;display:block;font-weight:600;}
+  .ab-tabla td.ab-prod-txt{font-weight:600;line-height:1.35;}
+  .ab-tabla .ab-sel{padding-left:5px;padding-right:0;}
+  .ab-tabla .ab-sel.plat{font-size:11.5px;letter-spacing:-.01em;}
+  .ab-tabla .ab-sel.est{padding-left:8px;padding-right:22px;background-position:right 7px center;}
   .ab-prev th,.ab-prev td{padding:6px 8px;border-bottom:1px solid var(--borde);text-align:left;}
 </style>
 </head>
@@ -3809,12 +3847,12 @@ function abOpt(lista, val, conVacio){
 function abFilaHTML(r){
   const e = abEstadoStock(r), con = !!(e && e.con);
   return '<tr data-id="'+r.id+'"'+(con?' class="ab-con-stock"':'')+'>'
-   + '<td class="ab-txt">'+abAgregadoHTML(r)+'</td>'
+   + abCeldaAgregado(r)
    + '<td><select class="ab-sel plat '+abClsPlat(r.plataforma)+'" data-f="plataforma">'+abOpt(AB_PLATAFORMAS,r.plataforma,true)+'</select></td>'
    + '<td><select class="ab-sel" data-f="envio">'+abOpt(AB_ENVIOS,r.envio,true)+'</select></td>'
    + '<td><input type="text" class="ab-inp" data-f="pedido" value="'+escapeHtml(r.pedido)+'" placeholder="N°"></td>'
-   + '<td><input type="text" class="ab-inp" data-f="producto" value="'+escapeHtml(r.producto)+'" placeholder="Escribe para buscar…" autocomplete="off"></td>'
-   + '<td><div class="ab-sku"><input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">'+abBtnCopiar()+'</div></td>'
+   + '<td><textarea class="ab-inp ab-prod" data-f="producto" rows="1" placeholder="Escribe para buscar…" autocomplete="off" spellcheck="false">'+escapeHtml(r.producto)+'</textarea></td>'
+   + abCeldaSku('<input type="text" class="ab-inp num" data-f="sku" value="'+escapeHtml(r.sku)+'" placeholder="SKU">', abBtnCopiar())
    + '<td class="ab-c-stock">'+abStockHTML(r, e)+'</td>'
    + '<td><input type="text" class="ab-inp num" data-f="cantidad" value="'+escapeHtml(r.cantidad)+'" placeholder="0"></td>'
    + '<td><select class="ab-sel" data-f="proveedor">'+abOpt(AB_PROVEEDORES,r.proveedor,true)+'</select></td>'
@@ -3840,7 +3878,7 @@ function abPintarFilas(){
   tb.innerHTML = rows.length
     ? rows.map(abFilaHTML).join('')
     : '<tr><td class="ab-vacio" colspan="12">No hay productos pendientes. Usa “+ Agregar fila”.</td></tr>';
-  tb.querySelectorAll('textarea.ab-obs').forEach(abAutoGrow);
+  tb.querySelectorAll('textarea.ab-obs,textarea.ab-prod').forEach(abAutoGrow);
   abActualizarConteo();
 }
 // Llega un cambio del servidor con la pestaña abierta: se repinta la tabla, salvo que alguien esté escribiendo en ella
@@ -3902,24 +3940,25 @@ function abRenderPendientes(){
     <div class="tabla-wrap">
       <table class="ab-tabla">
         <thead><tr>
-          <th style="width:100px;">Agregado</th>
-          <th style="width:95px;">Plataforma</th>
-          <th style="width:115px;">Envío / Retiro</th>
-          <th style="width:100px;">N° de pedido</th>
+          ${abThPlegable('ab-c-ag','Agreg.','Mostrar / ocultar cuándo y quién agregó cada fila')}
+          <th style="width:104px;">Plataforma</th>
+          <th style="width:100px;">Envío / Retiro</th>
+          <th style="width:76px;">N° pedido</th>
           <th>Nombre producto faltante</th>
-          <th class="num" style="width:165px;">SKU</th>
-          <th class="ab-c-stock" style="width:108px;">Stock</th>
-          <th class="num" style="width:90px;">Cantidad necesaria</th>
-          <th style="width:120px;">Proveedor</th>
-          <th style="width:17%;">Observación abastecimiento</th>
-          <th style="width:120px;">Estado</th>
-          <th style="width:36px;"></th>
+          ${abThPlegable('ab-c-sku','SKU','Mostrar / ocultar el SKU en todas las filas')}
+          <th class="ab-c-stock" style="width:92px;">Stock</th>
+          <th class="num" style="width:52px;" title="Cantidad necesaria">Cant.</th>
+          <th style="width:106px;">Proveedor</th>
+          <th style="width:11%;" title="Observación abastecimiento">Observación</th>
+          <th style="width:110px;">Estado</th>
+          <th style="width:32px;"></th>
         </tr></thead>
         <tbody id="ab-tbody"></tbody>
       </table>
     </div>
   `;
   const tb = document.getElementById('ab-tbody');
+  document.querySelector('#ab-body .ab-tabla thead').addEventListener('click', abClicPlegables);
   tb.addEventListener('input', abOnInput);
   tb.addEventListener('change', abOnChange);
   tb.addEventListener('click', abOnClick);
@@ -3936,6 +3975,43 @@ function abRenderPendientes(){
 const AB_ICONO_COPIAR = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg>';
 const AB_ICONO_OK = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>';
 function abBtnCopiar(){ return '<button type="button" class="ab-copy" data-act="copy" title="Copiar SKU">'+AB_ICONO_COPIAR+'</button>'; }
+const AB_ICO_CHEV = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+const AB_ICO_CAL = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>';
+/* Celda SKU plegada: sólo el botón copiar y una flecha; desplegada (por fila o desde el encabezado) muestra el SKU.
+   'interior' es el input editable (Pendientes) o el texto (Resueltos/Rechazados); 'copiar' el botón copiar ya armado. */
+function abCeldaSku(interior, copiar, clsTd){
+  return '<td class="ab-c-sku'+(clsTd?' '+clsTd:'')+'">'
+   + '<div class="ab-sku-cerr">'+copiar+'<button type="button" class="ab-chev" data-act="sku-pop" title="Ver / editar SKU">'+AB_ICO_CHEV+'</button></div>'
+   + '<div class="ab-sku ab-sku-ab">'+interior+copiar+'</div></td>';
+}
+function abThPlegable(cls, txt, titulo){
+  return '<th class="'+cls+'"><button type="button" class="ab-th-btn" data-act="col" title="'+titulo+'">'+txt+' '+AB_ICO_CHEV+'</button></th>';
+}
+// Clics comunes de las tablas: abrir/cerrar columna desde el encabezado y desplegar SKU / fecha en una fila
+function abClicPlegables(e){
+  const th = e.target.closest('[data-act="col"]');
+  if(th){
+    const tabla = th.closest('table');
+    tabla.classList.toggle(th.closest('th').classList.contains('ab-c-sku') ? 'sku-ab' : 'ag-ab');
+    abCerrarPops();
+    tabla.querySelectorAll('textarea.ab-prod,textarea.ab-obs').forEach(abAutoGrow);
+    return true;
+  }
+  const b = e.target.closest('[data-act="sku-pop"],[data-act="ag-pop"]');
+  if(b){
+    const td = b.closest('td'), abrir = !td.classList.contains('abierto');
+    abCerrarPops();
+    td.classList.toggle('abierto', abrir);
+    if(abrir){ const inp = td.querySelector('.ab-sku-ab input'); if(inp) inp.focus(); }
+    return true;
+  }
+  return false;
+}
+function abCerrarPops(excepto){
+  document.querySelectorAll('.ab-tabla td.abierto').forEach(td=>{ if(!excepto || !td.contains(excepto)) td.classList.remove('abierto'); });
+}
+document.addEventListener('mousedown', (e)=>{ if(!e.target.closest || !e.target.closest('.ab-tabla td.abierto')) abCerrarPops(); });
+window.addEventListener('resize', ()=>document.querySelectorAll('.ab-tabla textarea.ab-prod,.ab-tabla textarea.ab-obs').forEach(abAutoGrow));
 async function abCopiar(btn, texto){
   texto = String(texto||'').trim();
   if(!texto) return;
@@ -4049,23 +4125,25 @@ function abRenderArchivo(){
     <div class="tabla-wrap">
       <table class="ab-tabla">
         <thead><tr>
-          <th style="width:88px;">Agregado</th>
-          <th style="width:120px;">Hora</th>
-          <th style="width:95px;">Plataforma</th>
-          <th style="width:100px;">Envío / Retiro</th>
-          <th style="width:90px;">N° de pedido</th>
+          ${abThPlegable('ab-c-ag','Agreg.','Mostrar / ocultar cuándo y quién agregó cada fila')}
+          <th style="width:96px;">Hora</th>
+          <th style="width:90px;">Plataforma</th>
+          <th style="width:92px;">Envío / Retiro</th>
+          <th style="width:76px;">N° pedido</th>
           <th>Nombre producto faltante</th>
-          <th class="num" style="width:135px;">SKU</th>
-          <th class="num" style="width:75px;">Cantidad</th>
-          <th style="width:95px;">Proveedor</th>
-          <th style="width:17%;">Observación abastecimiento</th>
-          <th style="width:36px;"></th>
+          ${abThPlegable('ab-c-sku','SKU','Mostrar / ocultar el SKU en todas las filas')}
+          <th class="num" style="width:52px;" title="Cantidad">Cant.</th>
+          <th style="width:96px;">Proveedor</th>
+          <th style="width:13%;" title="Observación abastecimiento">Observación</th>
+          <th style="width:32px;"></th>
         </tr></thead>
         <tbody id="ab-res-tbody"><tr><td class="ab-vacio" colspan="11">Cargando…</td></tr></tbody>
       </table>
     </div>
   `;
+  document.querySelector('#ab-body .ab-tabla thead').addEventListener('click', abClicPlegables);
   document.getElementById('ab-res-tbody').addEventListener('click', (e)=>{
+    if(abClicPlegables(e)) return;
     const b = e.target.closest('[data-act]');
     if(!b) return;
     if(b.dataset.act==='copy') abCopiar(b, b.dataset.sku);
@@ -4114,13 +4192,13 @@ function abPintarArchivo(msg){
   const ayerD = new Date(); ayerD.setDate(ayerD.getDate()-1);
   const ayer = fmtISODate(ayerD);
   const fila = r=>'<tr>'
-    + '<td class="ab-txt">'+abAgregadoHTML(r)+'</td>'
+    + abCeldaAgregado(r)
     + '<td class="ab-txt"><span class="ab-hora">'+abHora(r[a.at])+'</span><div class="ab-meta">'+escapeHtml(r[a.por]||'')+'</div></td>'
     + '<td class="ab-txt"><b style="color:'+abColorPlat(r.plataforma)+'">'+escapeHtml(r.plataforma)+'</b></td>'
     + '<td class="ab-txt">'+escapeHtml(r.envio)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.pedido)+'</td>'
-    + '<td class="ab-txt">'+escapeHtml(r.producto)+'</td>'
-    + '<td class="ab-txt"><div class="ab-sku"><span>'+escapeHtml(r.sku)+'</span>'+(r.sku ? abBtnCopiar().replace('data-act="copy"','data-act="copy" data-sku="'+escapeHtml(r.sku)+'"') : '')+'</div></td>'
+    + '<td class="ab-txt ab-prod-txt">'+escapeHtml(r.producto)+'</td>'
+    + (r.sku ? abCeldaSku('<span>'+escapeHtml(r.sku)+'</span>', abBtnCopiar().replace('data-act="copy"','data-act="copy" data-sku="'+escapeHtml(r.sku)+'"'), 'ab-txt') : '<td class="ab-txt ab-c-sku"></td>')
     + '<td class="ab-txt" style="text-align:right;">'+escapeHtml(r.cantidad)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.proveedor)+'</td>'
     + '<td class="ab-txt">'+escapeHtml(r.obs)+'</td>'
@@ -4140,6 +4218,12 @@ function abPintarArchivo(msg){
   }).join('');
 }
 // "Agregado": fecha y hora en que se anotó el producto, y quién lo anotó.
+// Celda "Agregado" plegada: ícono de calendario que despliega fecha, hora y quién la agregó
+function abCeldaAgregado(r){
+  const t = r && r.creadoAt ? 'Agregado el '+abFechaHora(r.creadoAt)+(r.creadoPor && r.creadoPor!=='—' ? ' por '+r.creadoPor : '') : 'Sin fecha';
+  return '<td class="ab-txt ab-c-ag"><button type="button" class="ab-cal" data-act="ag-pop" title="'+escapeHtml(t)+'">'+AB_ICO_CAL+AB_ICO_CHEV+'</button>'
+    + '<div class="ab-ag-txt">'+abAgregadoHTML(r)+'</div></td>';
+}
 function abAgregadoHTML(r){
   if(!r || !r.creadoAt) return '<span class="ab-meta">—</span>';
   const d = new Date(r.creadoAt);
@@ -4176,6 +4260,7 @@ function abOnInput(e){
   const el = e.target, f = el.dataset.f;
   if(!f || el.tagName==='SELECT') return;
   const r = abFilaDe(el); if(!r) return;
+  if(f==='producto' && /[\r\n]/.test(el.value)) el.value = el.value.replace(/[\r\n]+/g,' '); // el nombre va en una sola línea aunque se pegue con saltos
   r[f] = el.value;
   if(f==='producto'){
     // si el SKU venía del autocompletado y se cambia el nombre, se limpia para no dejar un SKU que ya no corresponde
@@ -4184,7 +4269,7 @@ function abOnInput(e){
   }
   if(f==='sku'){ r.skuAuto = false; abMarcar(r.id,'skuAuto'); }
   if(f==='producto' || f==='sku') abAplicarStock(el.closest('tr'), r);
-  if(f==='obs') abAutoGrow(el);
+  if(f==='obs' || f==='producto') abAutoGrow(el);
   abMarcar(r.id, f);
 }
 function abOnChange(e){
@@ -4206,6 +4291,7 @@ function abOnChange(e){
   }
 }
 function abOnClick(e){
+  if(abClicPlegables(e)) return;
   const c = e.target.closest('[data-act="copy"]');
   if(c){ const r = abFilaDe(c); if(r) abCopiar(c, r.sku); return; }
   const b = e.target.closest('[data-act="del"]');
@@ -4292,7 +4378,8 @@ function abElegirAC(i){
   r.producto = it.n; r.sku = it.k; r.skuAuto = true;
   ['producto','sku','skuAuto'].forEach(f=>abMarcar(r.id, f));
   const tr = abAcEl.closest('tr');
-  tr.querySelector('[data-f="producto"]').value = it.n;
+  const prod = tr.querySelector('[data-f="producto"]');
+  prod.value = it.n; abAutoGrow(prod);
   tr.querySelector('[data-f="sku"]').value = it.k;
   abAplicarStock(tr, r);
   abCerrarAC();
@@ -4300,10 +4387,12 @@ function abElegirAC(i){
 }
 function abOnKeydown(e){
   const el = e.target;
-  if(!el.dataset || el.dataset.f!=='producto') return;
+  if(!el.dataset) return;
+  if(el.dataset.f==='sku' && (e.key==='Escape' || e.key==='Enter')){ abCerrarPops(); return; }
+  if(el.dataset.f!=='producto') return;
   const box = document.getElementById('ab-ac');
   const abierto = box && box.style.display==='block' && abAcRes.length;
-  if(!abierto){ if(e.key==='Escape') abCerrarAC(); return; }
+  if(!abierto){ if(e.key==='Escape') abCerrarAC(); if(e.key==='Enter') e.preventDefault(); return; }
   if(e.key==='ArrowDown'){ e.preventDefault(); abAcIdx = (abAcIdx+1)%abAcRes.length; abMarcarAC(true); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); abAcIdx = (abAcIdx-1+abAcRes.length)%abAcRes.length; abMarcarAC(true); }
   else if(e.key==='Enter'){ e.preventDefault(); abElegirAC(abAcIdx); }
